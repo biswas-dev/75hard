@@ -1,3 +1,5 @@
+github.com/anchoo2kewl/go-ai v0.1.0 h1:JXs2hcm+8u96ROND94TipT25ADnN/E22RnV61yD9xDI=
+github.com/anchoo2kewl/go-ai v0.1.0/go.mod h1:a2MiguvP/hs9iiKQcEkj21K5J0N9ye+OkSV4B77W2Ws=
 github.com/anchoo2kewl/go-login v0.2.1 h1:u7YzEEeCUlAvxBTb19yVVHcAH0LtCaW5/wtqbDTb7RA=
 github.com/anchoo2kewl/go-login v0.2.1/go.mod h1:EyE+DCIMUFTm95JcDtlgqYBOypCBmok/0gO15fCvHvY=
 github.com/davecgh/go-spew v1.1.1 h1:vj9j/u1bqnvCEfJOwUhtlOARqs3+rkHYY13jYWTU97c=
