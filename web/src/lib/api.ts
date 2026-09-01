@@ -1,12 +1,17 @@
 import type {
+  AIStatus,
   AuthConfig,
+  CoachNote,
+  FoodEstimate,
   AuthResponse,
   Day,
   DaySummary,
   Meal,
   Photo,
+  Plan,
   Program,
   ProgramTask,
+  Recipe,
   Stats,
   User,
   Workout,
@@ -239,6 +244,42 @@ class ApiClient {
 
   deleteMeal(id: number) {
     return this.request<{ ok: boolean }>(`/api/meals/${id}`, { method: 'DELETE' })
+  }
+
+  // ---- AI ----
+
+  aiStatus() {
+    return this.request<AIStatus>('/api/ai/status')
+  }
+
+  analyzeFood(photoId: number, hint?: string) {
+    return this.request<{ estimate: FoodEstimate; cached: boolean; provider?: string; model?: string }>(
+      '/api/ai/food',
+      { method: 'POST', body: JSON.stringify({ photo_id: photoId, hint: hint || '' }) },
+    )
+  }
+
+  suggestRecipes(body: {
+    ingredients?: string[]
+    preferences?: string
+    meal_slot?: string
+    photo_id?: number | null
+  }) {
+    return this.request<{ recipes: Recipe[]; provider?: string }>('/api/ai/recipes', {
+      method: 'POST',
+      body: JSON.stringify(body),
+    })
+  }
+
+  buildPlan(goals: string, force = false) {
+    return this.request<{ plan: Plan; cached: boolean }>('/api/ai/plan', {
+      method: 'POST',
+      body: JSON.stringify({ goals, force }),
+    })
+  }
+
+  coachNote() {
+    return this.request<{ note: CoachNote; cached: boolean }>('/api/ai/coach')
   }
 
   createWorkout(body: Record<string, unknown>) {

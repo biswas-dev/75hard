@@ -14,20 +14,20 @@ import (
 
 // Meal is a logged eating occasion, with its itemised breakdown.
 type Meal struct {
-	ID        int64      `json:"id"`
-	DayID     int64      `json:"day_id"`
-	PhotoID   *int64     `json:"photo_id"`
-	PhotoURL  string     `json:"photo_url,omitempty"`
-	Name      string     `json:"name"`
-	Slot      string     `json:"slot"`
-	Kcal      float64    `json:"kcal"`
-	ProteinG  float64    `json:"protein_g"`
-	CarbsG    float64    `json:"carbs_g"`
-	FatG      float64    `json:"fat_g"`
-	Source    string     `json:"source"`
-	Notes     string     `json:"notes"`
-	EatenAt   string     `json:"eaten_at"`
-	Items     []MealItem `json:"items"`
+	ID       int64      `json:"id"`
+	DayID    int64      `json:"day_id"`
+	PhotoID  *int64     `json:"photo_id"`
+	PhotoURL string     `json:"photo_url,omitempty"`
+	Name     string     `json:"name"`
+	Slot     string     `json:"slot"`
+	Kcal     float64    `json:"kcal"`
+	ProteinG float64    `json:"protein_g"`
+	CarbsG   float64    `json:"carbs_g"`
+	FatG     float64    `json:"fat_g"`
+	Source   string     `json:"source"`
+	Notes    string     `json:"notes"`
+	EatenAt  string     `json:"eaten_at"`
+	Items    []MealItem `json:"items"`
 }
 
 // MealItem is one component of a meal.

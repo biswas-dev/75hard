@@ -26,14 +26,14 @@ type Day struct {
 	WeightKg    *float64 `json:"weight_kg"`
 	CompletedAt *string  `json:"completed_at"`
 
-	IsToday      bool `json:"is_today"`
-	TasksDone    int  `json:"tasks_done"`
-	TasksTotal   int  `json:"tasks_total"`
-	Entries      []Entry   `json:"entries"`
-	Photos       []Photo   `json:"photos"`
-	Meals        []Meal    `json:"meals"`
-	Workouts     []Workout `json:"workouts"`
-	Totals       Totals    `json:"totals"`
+	IsToday    bool      `json:"is_today"`
+	TasksDone  int       `json:"tasks_done"`
+	TasksTotal int       `json:"tasks_total"`
+	Entries    []Entry   `json:"entries"`
+	Photos     []Photo   `json:"photos"`
+	Meals      []Meal    `json:"meals"`
+	Workouts   []Workout `json:"workouts"`
+	Totals     Totals    `json:"totals"`
 }
 
 // Entry is a task's state on a day, joined with its template definition so the

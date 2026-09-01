@@ -1,8 +1,8 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { PhotoUpload } from '../components/PhotoUpload'
 import { AuthImage } from '../components/AuthImage'
 import { api } from '../lib/api'
-import type { Photo } from '../lib/types'
+import type { FoodEstimate, Photo } from '../lib/types'
 
 interface Props {
   dayNumber: number
@@ -41,6 +41,64 @@ export function MealSheet({ dayNumber, onClose, onSaved }: Props) {
   const [items, setItems] = useState<DraftItem[]>([{ ...emptyItem }])
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
+  const [aiAvailable, setAiAvailable] = useState(false)
+  const [analyzing, setAnalyzing] = useState(false)
+  const [aiNote, setAiNote] = useState('')
+
+  useEffect(() => {
+    // Only offer the button if the server actually has a provider configured.
+    api
+      .aiStatus()
+      .then((s) => setAiAvailable(s.enabled))
+      .catch(() => setAiAvailable(false))
+  }, [])
+
+  /**
+   * Ask the model to read the photo, then drop the result straight into the
+   * form. It is filled in as an editable draft rather than saved: an estimate
+   * should be reviewed before it becomes a logged meal.
+   */
+  async function analyze() {
+    if (!photo) return
+    setAnalyzing(true)
+    setError('')
+    setAiNote('')
+    try {
+      const { estimate, cached } = await api.analyzeFood(photo.id, name)
+      applyEstimate(estimate)
+      setAiNote(
+        (cached ? 'From a previous estimate. ' : '') +
+          (estimate.notes || 'Check the numbers before saving.'),
+      )
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Could not analyse that photo')
+    } finally {
+      setAnalyzing(false)
+    }
+  }
+
+  function applyEstimate(est: FoodEstimate) {
+    if (est.name && !name.trim()) setName(est.name)
+    if (est.items.length > 0) {
+      setItemised(true)
+      setItems(
+        est.items.map((it) => ({
+          name: it.name,
+          qty: String(it.qty),
+          unit: it.unit,
+          kcal: String(Math.round(it.kcal)),
+          protein_g: String(Math.round(it.protein_g)),
+          carbs_g: String(Math.round(it.carbs_g)),
+          fat_g: String(Math.round(it.fat_g)),
+        })),
+      )
+    } else {
+      setKcal(String(Math.round(est.kcal)))
+      setProtein(String(Math.round(est.protein_g)))
+      setCarbs(String(Math.round(est.carbs_g)))
+      setFat(String(Math.round(est.fat_g)))
+    }
+  }
 
   const itemTotals = items.reduce(
     (acc, it) => ({
@@ -119,6 +177,21 @@ export function MealSheet({ dayNumber, onClose, onSaved }: Props) {
             </div>
           ) : (
             <PhotoUpload kind="food" dayNumber={dayNumber} label="Add a food photo" onUploaded={setPhoto} />
+          )}
+
+          {photo && aiAvailable && (
+            <div>
+              <button
+                type="button"
+                className="btn-ghost w-full border-flame-500/30 text-flame-400"
+                onClick={analyze}
+                disabled={analyzing}
+              >
+                {analyzing ? <Spinner /> : <SparkIcon />}
+                {analyzing ? 'Reading the photo…' : 'Estimate calories from the photo'}
+              </button>
+              {aiNote && <p className="mt-2 text-xs text-ink-500">{aiNote}</p>}
+            </div>
           )}
 
           <div>
@@ -273,6 +346,23 @@ function Field({
       />
       <p className="mt-1 text-center text-[11px] text-ink-600">{label}</p>
     </div>
+  )
+}
+
+function SparkIcon() {
+  return (
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
+      <path d="M12 3v4M12 17v4M3 12h4M17 12h4M5.6 5.6l2.8 2.8M15.6 15.6l2.8 2.8M18.4 5.6l-2.8 2.8M8.4 15.6l-2.8 2.8" strokeLinecap="round" />
+    </svg>
+  )
+}
+
+function Spinner() {
+  return (
+    <svg className="h-4 w-4 animate-spin" viewBox="0 0 24 24" fill="none">
+      <circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="3" className="opacity-25" />
+      <path d="M12 2a10 10 0 0 1 10 10" stroke="currentColor" strokeWidth="3" strokeLinecap="round" />
+    </svg>
   )
 }
 

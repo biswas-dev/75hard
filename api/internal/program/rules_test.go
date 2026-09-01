@@ -93,44 +93,44 @@ func TestDayCompleteWithNoTasks(t *testing.T) {
 
 func TestEvaluateDay(t *testing.T) {
 	tests := []struct {
-		name                     string
-		onDate, today            string
-		dayNumber, length        int
-		complete, strict         bool
-		wantDay, wantProgram     string
-		wantRestart              bool
+		name                 string
+		onDate, today        string
+		dayNumber, length    int
+		complete, strict     bool
+		wantDay, wantProgram string
+		wantRestart          bool
 	}{
 		{
-			name: "unfinished but still today is pending, not missed",
+			name:   "unfinished but still today is pending, not missed",
 			onDate: "2026-01-10", today: "2026-01-10", dayNumber: 10, length: 75,
 			wantDay: StatusPending,
 		},
 		{
-			name: "unfinished and in the past fails a strict program",
+			name:   "unfinished and in the past fails a strict program",
 			onDate: "2026-01-09", today: "2026-01-10", dayNumber: 9, length: 75,
 			strict:  true,
 			wantDay: StatusMissed, wantProgram: ProgramFailed, wantRestart: true,
 		},
 		{
-			name: "unfinished and in the past only marks the day when lenient",
+			name:   "unfinished and in the past only marks the day when lenient",
 			onDate: "2026-01-09", today: "2026-01-10", dayNumber: 9, length: 75,
 			strict:  false,
 			wantDay: StatusMissed,
 		},
 		{
-			name: "finishing the final day completes the program",
+			name:   "finishing the final day completes the program",
 			onDate: "2026-03-16", today: "2026-03-16", dayNumber: 75, length: 75,
 			complete: true,
 			wantDay:  StatusComplete, wantProgram: ProgramCompleted,
 		},
 		{
-			name: "finishing a mid-program day leaves the program alone",
+			name:   "finishing a mid-program day leaves the program alone",
 			onDate: "2026-01-10", today: "2026-01-10", dayNumber: 10, length: 75,
 			complete: true,
 			wantDay:  StatusComplete,
 		},
 		{
-			name: "a future day is pending",
+			name:   "a future day is pending",
 			onDate: "2026-01-11", today: "2026-01-10", dayNumber: 11, length: 75,
 			strict:  true,
 			wantDay: StatusPending,

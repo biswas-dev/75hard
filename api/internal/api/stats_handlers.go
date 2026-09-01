@@ -9,20 +9,20 @@ import (
 
 // Stats is the dashboard summary for the active program.
 type Stats struct {
-	ProgramID      int64          `json:"program_id"`
-	CurrentDay     int            `json:"current_day"`
-	LengthDays     int            `json:"length_days"`
-	DaysComplete   int            `json:"days_complete"`
-	DaysMissed     int            `json:"days_missed"`
-	Streak         int            `json:"streak"`
-	BestStreak     int            `json:"best_streak"`
-	PercentDone    float64        `json:"percent_done"`
-	TotalPhotos    int            `json:"total_photos"`
-	TotalWorkouts  int            `json:"total_workouts"`
-	TotalMinutes   int            `json:"total_minutes"`
-	AvgKcal        float64        `json:"avg_kcal"`
-	TaskCompletion []TaskStat     `json:"task_completion"`
-	WeightSeries   []WeightPoint  `json:"weight_series"`
+	ProgramID      int64         `json:"program_id"`
+	CurrentDay     int           `json:"current_day"`
+	LengthDays     int           `json:"length_days"`
+	DaysComplete   int           `json:"days_complete"`
+	DaysMissed     int           `json:"days_missed"`
+	Streak         int           `json:"streak"`
+	BestStreak     int           `json:"best_streak"`
+	PercentDone    float64       `json:"percent_done"`
+	TotalPhotos    int           `json:"total_photos"`
+	TotalWorkouts  int           `json:"total_workouts"`
+	TotalMinutes   int           `json:"total_minutes"`
+	AvgKcal        float64       `json:"avg_kcal"`
+	TaskCompletion []TaskStat    `json:"task_completion"`
+	WeightSeries   []WeightPoint `json:"weight_series"`
 }
 
 // TaskStat is how reliably one task has been completed across the attempt.

@@ -196,3 +196,66 @@ export interface Stats {
   task_completion: TaskStat[]
   weight_series: WeightPoint[]
 }
+
+// ---- AI ----
+
+export interface AIStatus {
+  enabled: boolean
+  providers: string[] | null
+  used_today: number
+  daily_limit: number
+}
+
+export interface FoodItemEstimate {
+  name: string
+  qty: number
+  unit: string
+  kcal: number
+  protein_g: number
+  carbs_g: number
+  fat_g: number
+  confidence: number
+}
+
+export interface FoodEstimate {
+  name: string
+  items: FoodItemEstimate[]
+  notes: string
+  kcal: number
+  protein_g: number
+  carbs_g: number
+  fat_g: number
+}
+
+export interface Recipe {
+  name: string
+  summary: string
+  minutes: number
+  servings: number
+  kcal_per_serving: number
+  protein_g: number
+  carbs_g: number
+  fat_g: number
+  ingredients: string[]
+  steps: string[]
+}
+
+export interface PlanDay {
+  day: number
+  indoor: string
+  outdoor: string
+  nutrition: string
+  note: string
+}
+
+export interface Plan {
+  summary: string
+  focus: string
+  days: PlanDay[]
+  tips: string[]
+}
+
+export interface CoachNote {
+  note: string
+  tone: string
+}

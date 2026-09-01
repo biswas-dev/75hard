@@ -101,10 +101,10 @@ type Task struct {
 
 // Entry is a user's progress against one task on one day.
 type Entry struct {
-	TaskID      int64
-	Completed   bool
-	ValueNum    *float64
-	PhotoCount  int
+	TaskID     int64
+	Completed  bool
+	ValueNum   *float64
+	PhotoCount int
 }
 
 // EntrySatisfies reports whether an entry meets its task's bar.

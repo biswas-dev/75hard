@@ -4,6 +4,7 @@ const tabs = [
   { to: '/app', label: 'Today', icon: <FlameIcon />, end: true },
   { to: '/app/calendar', label: 'Calendar', icon: <GridIcon /> },
   { to: '/app/photos', label: 'Photos', icon: <ImageIcon /> },
+  { to: '/app/coach', label: 'Coach', icon: <SparkIcon /> },
   { to: '/app/stats', label: 'Stats', icon: <ChartIcon /> },
   { to: '/app/settings', label: 'You', icon: <UserIcon /> },
 ]
@@ -67,6 +68,17 @@ function ImageIcon() {
       <rect x="3" y="4" width="18" height="16" rx="2.5" />
       <circle cx="8.5" cy="9.5" r="1.8" />
       <path d="m4 17 5-4 4 3 3-2 4 3" strokeLinejoin="round" />
+    </svg>
+  )
+}
+
+function SparkIcon() {
+  return (
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
+      <path
+        d="M12 3v4M12 17v4M3 12h4M17 12h4M5.6 5.6l2.8 2.8M15.6 15.6l2.8 2.8M18.4 5.6l-2.8 2.8M8.4 15.6l-2.8 2.8"
+        strokeLinecap="round"
+      />
     </svg>
   )
 }

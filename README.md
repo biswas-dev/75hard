@@ -26,6 +26,11 @@ template rather than a fixed list — every task is editable.
   totals, and workouts that can credit a duration task directly.
 - **Progress** — a 75-day calendar, per-task consistency, streaks, and a weight
   series.
+- **AI coach** — photograph a meal and get an itemised calorie and macro
+  estimate; recipes that fit what's left of today's budget; a weekly plan and a
+  short daily note, both written from your own logged record. Powered by
+  [go-ai](https://github.com/anchoo2kewl/go-ai) with a primary provider and two
+  backups.
 
 ## Stack
 
@@ -112,6 +117,35 @@ Everything is environment-driven; the defaults suit local development.
 | `OAUTH_STATE_SECRET` | — | Must differ from `JWT_SECRET` |
 | `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` | — | Optional |
 | `LOGIN_GITHUB_CLIENT_ID` / `LOGIN_GITHUB_CLIENT_SECRET` | — | Optional |
+
+### AI providers
+
+The AI features are off unless a provider chain is configured. Slots are read
+in order and the scan stops at the first gap, so slot 1 is the primary and 2
+and 3 are backups:
+
+```bash
+AI_1_PROVIDER=anthropic
+AI_1_MODEL=claude-sonnet-5
+AI_1_API_KEY=sk-ant-...
+
+AI_2_PROVIDER=openai          # backup 1
+AI_2_MODEL=gpt-5.2
+AI_2_API_KEY=sk-...
+
+AI_3_PROVIDER=ollama          # backup 2, self-hosted
+AI_3_MODEL=llama3.1
+AI_3_BASE_URL=http://localhost:11434/v1
+```
+
+The chain falls through on a rate limit, a 5xx, a timeout or a dead key, but
+not on a 400 — a malformed request would be rejected identically by the backup.
+Every call is recorded in `ai_runs`, which is both the audit trail and the
+quota counter (40 calls per user per rolling 24 hours), and identical inputs
+reuse the stored result rather than paying twice.
+
+Anthropic is worth putting first for the food-photo feature: it's the vision
+path the library implements natively.
 
 ## Deployment
 

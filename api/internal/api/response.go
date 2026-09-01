@@ -1,7 +1,10 @@
 package api
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
+	"io"
 	"net/http"
 
 	"go.uber.org/zap"
@@ -50,4 +53,20 @@ func decodeJSON(w http.ResponseWriter, r *http.Request, dst any) bool {
 		return false
 	}
 	return true
+}
+
+// readAll reads a reader fully with a hard cap, so a corrupt or hostile file
+// cannot exhaust memory.
+func readAll(r io.Reader) ([]byte, error) {
+	const maxBytes = 20 << 20
+	return io.ReadAll(io.LimitReader(r, maxBytes))
+}
+
+// hashFor fingerprints AI inputs for the result cache.
+func hashFor(data []byte, text string) string {
+	h := sha256.New()
+	h.Write(data)
+	h.Write([]byte{0})
+	h.Write([]byte(text))
+	return hex.EncodeToString(h.Sum(nil))
 }

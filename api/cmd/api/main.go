@@ -13,12 +13,14 @@ import (
 	"syscall"
 	"time"
 
+	ai "github.com/anchoo2kewl/go-ai"
 	gologin "github.com/anchoo2kewl/go-login"
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
 	"github.com/go-chi/cors"
 	"go.uber.org/zap"
 
+	"github.com/anchoo2kewl/75hard/api/internal/aifeatures"
 	"github.com/anchoo2kewl/75hard/api/internal/api"
 	"github.com/anchoo2kewl/75hard/api/internal/auth"
 	"github.com/anchoo2kewl/75hard/api/internal/config"
@@ -61,7 +63,24 @@ func main() {
 		logger.Fatal("failed to open photo store", zap.Error(err))
 	}
 
-	server := api.NewServer(database, cfg, logger, photos)
+	// The AI chain is optional: with no AI_n_* slots configured the app runs
+	// exactly as before and the AI endpoints report themselves as unavailable.
+	aiSvc := aifeatures.New(nil)
+	if chain, err := ai.ChainFromEnv(); err != nil {
+		if !errors.Is(err, ai.ErrNoProviders) {
+			logger.Warn("ai chain not configured", zap.Error(err))
+		} else {
+			logger.Info("ai features disabled: no AI_1_PROVIDER configured")
+		}
+	} else {
+		chain.OnFallback(func(provider string, err error) {
+			logger.Warn("ai provider failed, falling through", zap.String("provider", provider), zap.Error(err))
+		})
+		aiSvc = aifeatures.New(chain)
+		logger.Info("ai features enabled", zap.Strings("chain", chain.Names()))
+	}
+
+	server := api.NewServer(database, cfg, logger, photos, aiSvc)
 
 	r := chi.NewRouter()
 	r.Use(middleware.RequestID)
@@ -195,6 +214,17 @@ func main() {
 
 			r.Post("/workouts", server.HandleCreateWorkout)
 			r.Delete("/workouts/{workoutID}", server.HandleDeleteWorkout)
+
+			// AI features. Rate limited far harder than the rest: each of
+			// these is a paid upstream call, not a database read.
+			r.Group(func(r chi.Router) {
+				r.Use(api.RateLimitMiddleware(20))
+				r.Get("/ai/status", server.HandleAIStatus)
+				r.Post("/ai/food", server.HandleAnalyzeFood)
+				r.Post("/ai/recipes", server.HandleSuggestRecipes)
+				r.Post("/ai/plan", server.HandleBuildPlan)
+				r.Get("/ai/coach", server.HandleCoachNote)
+			})
 		})
 	})
 

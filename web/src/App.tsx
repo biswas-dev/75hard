@@ -15,6 +15,7 @@ const DayDetail = lazy(() => import('./routes/DayDetail').then((m) => ({ default
 const Photos = lazy(() => import('./routes/Photos').then((m) => ({ default: m.Photos })))
 const StatsPage = lazy(() => import('./routes/Stats').then((m) => ({ default: m.StatsPage })))
 const Settings = lazy(() => import('./routes/Settings').then((m) => ({ default: m.Settings })))
+const Coach = lazy(() => import('./routes/Coach').then((m) => ({ default: m.Coach })))
 const StartProgram = lazy(() => import('./routes/StartProgram').then((m) => ({ default: m.StartProgram })))
 
 function ProtectedRoute({ children }: { children: JSX.Element }) {
@@ -58,6 +59,7 @@ export default function App() {
               <Route path="calendar" element={<Calendar />} />
               <Route path="day/:dayNumber" element={<DayDetail />} />
               <Route path="photos" element={<Photos />} />
+              <Route path="coach" element={<Coach />} />
               <Route path="stats" element={<StatsPage />} />
               <Route path="settings" element={<Settings />} />
             </Route>

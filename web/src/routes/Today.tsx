@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { AuthImage } from '../components/AuthImage'
+import { CoachNote } from '../components/CoachNote'
 import { Confetti } from '../components/Confetti'
 import { PhotoUpload } from '../components/PhotoUpload'
 import { TaskRow } from '../components/TaskRow'
@@ -158,6 +159,8 @@ export function Today() {
           </button>
         </div>
       )}
+
+      <CoachNote />
 
       <section className="space-y-3">
         {day.entries.map((entry) => (
