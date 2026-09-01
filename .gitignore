@@ -1,0 +1,18 @@
+# Build output
+web/dist/
+web/node_modules/
+api/tmp/
+
+# Local data — never commit a database or someone's progress photos
+data/
+*.db
+*.db-shm
+*.db-wal
+
+# Secrets
+.env
+.env.local
+secrets/
+
+.DS_Store
+*.log

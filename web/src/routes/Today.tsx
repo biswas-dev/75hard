@@ -1,0 +1,339 @@
+import { useCallback, useEffect, useRef, useState } from 'react'
+import { useNavigate } from 'react-router-dom'
+import { AuthImage } from '../components/AuthImage'
+import { Confetti } from '../components/Confetti'
+import { PhotoUpload } from '../components/PhotoUpload'
+import { TaskRow } from '../components/TaskRow'
+import { ApiError, api } from '../lib/api'
+import type { Day, Entry, Program } from '../lib/types'
+import { MealSheet } from './MealSheet'
+
+export function Today() {
+  const navigate = useNavigate()
+  const [program, setProgram] = useState<Program | null>(null)
+  const [day, setDay] = useState<Day | null>(null)
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState('')
+  const [confetti, setConfetti] = useState(false)
+  const [mealOpen, setMealOpen] = useState(false)
+
+  // Tracks whether the day was already complete, so the celebration fires on
+  // the transition rather than on every refetch of a finished day.
+  const wasComplete = useRef(false)
+  // Opening the app on an already-finished day should not celebrate; only a
+  // transition that happens while you are looking at it should.
+  const firstLoad = useRef(true)
+
+  const load = useCallback(async () => {
+    try {
+      const [p, d] = await Promise.all([api.activeProgram(), api.today()])
+      setProgram(p)
+
+      // A refetch is how the day completes when the last task is a photo
+      // upload, so the transition has to be detected here too — not only in
+      // the check-off path.
+      if (!firstLoad.current && d.status === 'complete' && !wasComplete.current) {
+        setConfetti(true)
+        navigator.vibrate?.([18, 60, 18])
+      }
+      firstLoad.current = false
+      wasComplete.current = d.status === 'complete'
+      setDay(d)
+    } catch (err) {
+      if (err instanceof ApiError && err.code === 'no_active_program') {
+        navigate('/start', { replace: true })
+        return
+      }
+      setError(err instanceof Error ? err.message : 'Could not load today')
+    } finally {
+      setLoading(false)
+    }
+  }, [navigate])
+
+  useEffect(() => {
+    load()
+  }, [load])
+
+  function applyDay(next: Day) {
+    if (next.status === 'complete' && !wasComplete.current) {
+      setConfetti(true)
+      navigator.vibrate?.([18, 60, 18])
+    }
+    wasComplete.current = next.status === 'complete'
+    setDay(next)
+  }
+
+  async function toggle(entry: Entry, next: { done?: boolean; value?: number }) {
+    if (!program || !day) return
+
+    // Optimistic: the tap must feel instant, so the row flips before the
+    // round trip and the server's answer reconciles it a moment later.
+    const optimisticDone =
+      next.done ?? (entry.target_num ? (next.value ?? 0) >= entry.target_num : false)
+    const snapshot = day
+    setDay({
+      ...day,
+      entries: day.entries.map((e) =>
+        e.task_id === entry.task_id
+          ? { ...e, done: optimisticDone, value: next.value ?? e.value }
+          : e,
+      ),
+      tasks_done: day.tasks_done + (optimisticDone === entry.done ? 0 : optimisticDone ? 1 : -1),
+    })
+
+    try {
+      applyDay(await api.toggleTask(program.id, day.day_number, entry.task_id, next))
+    } catch (err) {
+      setDay(snapshot)
+      setError(err instanceof Error ? err.message : 'Could not save that')
+    }
+  }
+
+  if (loading) {
+    return (
+      <div className="space-y-3">
+        <div className="h-28 animate-pulse rounded-2xl bg-ink-900" />
+        {[0, 1, 2, 3, 4, 5].map((i) => (
+          <div key={i} className="h-20 animate-pulse rounded-2xl bg-ink-900" />
+        ))}
+      </div>
+    )
+  }
+
+  if (!program || !day) {
+    return <p className="text-center text-red-400">{error || 'Something went wrong.'}</p>
+  }
+
+  const pct = day.tasks_total > 0 ? day.tasks_done / day.tasks_total : 0
+  const photoTask = day.entries.find((e) => e.kind === 'photo')
+
+  return (
+    <div className="space-y-5 pb-4">
+      {confetti && <Confetti onDone={() => setConfetti(false)} />}
+
+      <header className="animate-slide-up">
+        <div className="flex items-end justify-between">
+          <div>
+            <p className="text-sm text-ink-500">
+              {new Date(`${day.date}T12:00:00`).toLocaleDateString(undefined, {
+                weekday: 'long',
+                month: 'long',
+                day: 'numeric',
+              })}
+            </p>
+            <h1 className="mt-1 text-3xl font-semibold text-ink-100">
+              Day <span className="text-flame-500">{day.day_number}</span>
+              <span className="text-ink-600"> / {program.length_days}</span>
+            </h1>
+          </div>
+          <DayRing progress={pct} complete={day.status === 'complete'} />
+        </div>
+
+        <div className="mt-4 flex gap-2">
+          <Pill label="Streak" value={`${program.streak} day${program.streak === 1 ? '' : 's'}`} />
+          <Pill label="Done" value={`${program.days_complete} / ${program.length_days}`} />
+          {day.status === 'complete' && <Pill label="" value="Day complete" tone="good" />}
+          {day.status === 'missed' && <Pill label="" value="Missed" tone="bad" />}
+        </div>
+      </header>
+
+      {program.status !== 'active' && (
+        <div className="card border-flame-500/30 bg-flame-500/[0.07] p-4">
+          <p className="font-medium text-flame-400">
+            {program.status === 'completed' ? 'You finished the challenge.' : 'This attempt has ended.'}
+          </p>
+          <p className="mt-1 text-sm text-ink-400">
+            {program.status === 'completed'
+              ? 'All 75 days logged. Start another whenever you are ready.'
+              : 'A required task was missed on a past day.'}
+          </p>
+          <button
+            className="btn-primary mt-3 w-full py-2.5 text-sm"
+            onClick={async () => {
+              await api.restartProgram(program.id)
+              await load()
+            }}
+          >
+            Start a new attempt
+          </button>
+        </div>
+      )}
+
+      <section className="space-y-3">
+        {day.entries.map((entry) => (
+          <TaskRow
+            key={entry.task_id}
+            entry={entry}
+            disabled={program.status !== 'active'}
+            onToggle={toggle}
+          />
+        ))}
+      </section>
+
+      {photoTask && (
+        <section className="card p-4">
+          <h2 className="mb-3 text-sm font-medium uppercase tracking-wide text-ink-500">
+            Progress photo
+          </h2>
+          {day.photos.filter((p) => p.kind === 'progress').length > 0 && (
+            <div className="mb-3 flex gap-2 overflow-x-auto pb-1">
+              {day.photos
+                .filter((p) => p.kind === 'progress')
+                .map((p) => (
+                  <AuthImage
+                    key={p.id}
+                    src={p.thumb_url}
+                    alt={`Progress photo, day ${day.day_number}`}
+                    className="h-24 w-24 shrink-0 rounded-xl object-cover"
+                  />
+                ))}
+            </div>
+          )}
+          <PhotoUpload
+            kind="progress"
+            dayNumber={day.day_number}
+            label="Take today's photo"
+            onUploaded={() => load()}
+          />
+        </section>
+      )}
+
+      <section className="card p-4">
+        <div className="mb-3 flex items-center justify-between">
+          <h2 className="text-sm font-medium uppercase tracking-wide text-ink-500">Food</h2>
+          <span className="font-mono text-sm text-ink-300">
+            {Math.round(day.totals.kcal)}
+            {day.totals.kcal_target ? (
+              <span className="text-ink-600"> / {day.totals.kcal_target}</span>
+            ) : null}
+            <span className="text-ink-600"> kcal</span>
+          </span>
+        </div>
+
+        {day.totals.kcal_target ? (
+          <div className="mb-3 h-1.5 overflow-hidden rounded-full bg-ink-800">
+            <div
+              className="h-full rounded-full bg-flame-500 transition-all duration-500"
+              style={{ width: `${Math.min(100, (day.totals.kcal / day.totals.kcal_target) * 100)}%` }}
+            />
+          </div>
+        ) : null}
+
+        {day.meals.length > 0 && (
+          <ul className="mb-3 divide-y divide-ink-800">
+            {day.meals.map((meal) => (
+              <li key={meal.id} className="flex items-center gap-3 py-2.5">
+                {meal.photo_url && (
+                  <AuthImage
+                    src={`${meal.photo_url}?size=thumb`}
+                    alt={meal.name || 'Meal'}
+                    className="h-10 w-10 shrink-0 rounded-lg object-cover"
+                  />
+                )}
+                <span className="min-w-0 flex-1">
+                  <span className="block truncate text-ink-200">{meal.name || meal.slot}</span>
+                  <span className="text-xs capitalize text-ink-600">
+                    {meal.slot}
+                    {meal.items.length > 0 && ` · ${meal.items.length} items`}
+                  </span>
+                </span>
+                <span className="shrink-0 font-mono text-sm text-ink-400">
+                  {Math.round(meal.kcal)}
+                </span>
+                <button
+                  aria-label={`Delete ${meal.name || 'meal'}`}
+                  className="shrink-0 p-1 text-ink-600 hover:text-red-400"
+                  onClick={async () => {
+                    await api.deleteMeal(meal.id)
+                    await load()
+                  }}
+                >
+                  ×
+                </button>
+              </li>
+            ))}
+          </ul>
+        )}
+
+        <div className="grid grid-cols-4 gap-2 pb-3 text-center">
+          <Macro label="Protein" value={day.totals.protein_g} unit="g" />
+          <Macro label="Carbs" value={day.totals.carbs_g} unit="g" />
+          <Macro label="Fat" value={day.totals.fat_g} unit="g" />
+          <Macro label="Training" value={day.totals.workout_minutes} unit="min" />
+        </div>
+
+        <button className="btn-ghost w-full" onClick={() => setMealOpen(true)}>
+          + Log a meal
+        </button>
+      </section>
+
+      {mealOpen && (
+        <MealSheet
+          dayNumber={day.day_number}
+          onClose={() => setMealOpen(false)}
+          onSaved={async () => {
+            setMealOpen(false)
+            await load()
+          }}
+        />
+      )}
+
+      {error && <p className="text-center text-sm text-red-400">{error}</p>}
+    </div>
+  )
+}
+
+function DayRing({ progress, complete }: { progress: number; complete: boolean }) {
+  const r = 30
+  const c = 2 * Math.PI * r
+  return (
+    <div className="relative h-20 w-20">
+      <svg viewBox="0 0 72 72" className="h-20 w-20 -rotate-90">
+        <circle cx="36" cy="36" r={r} className="fill-none stroke-ink-800" strokeWidth="5" />
+        <circle
+          cx="36"
+          cy="36"
+          r={r}
+          className={`fill-none transition-all duration-700 ease-out ${
+            complete ? 'stroke-moss-500' : 'stroke-flame-500'
+          }`}
+          strokeWidth="5"
+          strokeLinecap="round"
+          strokeDasharray={c}
+          strokeDashoffset={c * (1 - progress)}
+        />
+      </svg>
+      <span className="absolute inset-0 flex items-center justify-center text-lg font-semibold text-ink-100">
+        {Math.round(progress * 100)}
+        <span className="text-xs text-ink-500">%</span>
+      </span>
+    </div>
+  )
+}
+
+function Pill({ label, value, tone }: { label: string; value: string; tone?: 'good' | 'bad' }) {
+  const toneClass =
+    tone === 'good'
+      ? 'bg-moss-500/15 text-moss-400 border-moss-500/25'
+      : tone === 'bad'
+        ? 'bg-red-500/15 text-red-400 border-red-500/25'
+        : 'bg-ink-900 text-ink-300 border-ink-800'
+  return (
+    <span className={`rounded-full border px-3 py-1.5 text-xs ${toneClass}`}>
+      {label && <span className="text-ink-500">{label} </span>}
+      {value}
+    </span>
+  )
+}
+
+function Macro({ label, value, unit }: { label: string; value: number; unit: string }) {
+  return (
+    <div className="rounded-xl bg-ink-850 py-2">
+      <p className="font-mono text-sm text-ink-200">
+        {Math.round(value)}
+        <span className="text-xs text-ink-600">{unit}</span>
+      </p>
+      <p className="text-[11px] text-ink-600">{label}</p>
+    </div>
+  )
+}

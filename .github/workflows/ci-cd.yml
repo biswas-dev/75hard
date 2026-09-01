@@ -1,0 +1,198 @@
+# CI/CD for 75hard (75hard.biswas.me)
+#
+# Production-only. A push to main runs the tests, builds the image, pushes it
+# to Harbor and deploys it on the prod host. Pull requests run tests only.
+#
+# Runner: the production server itself (31.97.102.48) — labels:
+#   self-hosted, Linux, X64, prod
+#
+# Required secrets:
+#   HARBOR_AUTH          base64("username:password") for harbor.biswas.me
+#   H75_JWT_SECRET       JWT signing secret
+#   H75_OAUTH_STATE_SECRET  OAuth CSRF state secret (MUST differ from the JWT one)
+#   H75_ADMIN_EMAIL      seeded admin account (optional)
+#   H75_ADMIN_PASSWORD   seeded admin password (optional)
+#   GOOGLE_CLIENT_ID / GOOGLE_CLIENT_SECRET               (optional)
+#   LOGIN_GITHUB_CLIENT_ID / LOGIN_GITHUB_CLIENT_SECRET   (optional)
+#   CF_API_TOKEN / CF_ZONE_ID   to purge the Cloudflare cache after deploy
+
+name: CI/CD
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  test:
+    name: Test
+    runs-on: [self-hosted, Linux, X64]
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.26'
+          cache-dependency-path: api/go.sum
+
+      - name: Go vet
+        working-directory: api
+        run: go vet ./...
+
+      - name: Go test
+        working-directory: api
+        run: go test ./...
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+
+      - name: Install web deps
+        working-directory: web
+        run: npm ci --no-audit --no-fund
+
+      - name: Typecheck
+        working-directory: web
+        run: npx tsc --noEmit
+
+      - name: Build web
+        working-directory: web
+        run: npx vite build
+
+  build:
+    name: Build and push
+    if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
+    runs-on: [self-hosted, Linux, X64, prod]
+    outputs:
+      tag: ${{ steps.meta.outputs.tag }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Metadata
+        id: meta
+        run: |
+          echo "tag=x64-${GITHUB_SHA::7}" >> "$GITHUB_OUTPUT"
+          echo "version=$(cat VERSION)" >> "$GITHUB_OUTPUT"
+          echo "built=$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> "$GITHUB_OUTPUT"
+
+      - name: Build and push image
+        env:
+          HARBOR_AUTH: ${{ secrets.HARBOR_AUTH }}
+          TAG: ${{ steps.meta.outputs.tag }}
+          VERSION: ${{ steps.meta.outputs.version }}
+          BUILT: ${{ steps.meta.outputs.built }}
+        run: |
+          set -euo pipefail
+          IMAGE=harbor.biswas.me/biswas/75hard
+
+          # Credentials never land in the process list or the build args.
+          HARBOR_USER="$(echo "$HARBOR_AUTH" | base64 -d | cut -d: -f1)"
+          echo "$HARBOR_AUTH" | base64 -d | cut -d: -f2- \
+            | docker login harbor.biswas.me -u "$HARBOR_USER" --password-stdin
+
+          docker build \
+            --cache-from "$IMAGE:x64-latest" \
+            --build-arg VERSION="$VERSION" \
+            --build-arg GIT_COMMIT="${GITHUB_SHA::7}" \
+            --build-arg BUILD_TIME="$BUILT" \
+            -t "$IMAGE:$TAG" .
+
+          docker push "$IMAGE:$TAG"
+          docker tag "$IMAGE:$TAG" "$IMAGE:x64-latest"
+          docker push "$IMAGE:x64-latest"
+
+  deploy:
+    name: Deploy to production
+    needs: build
+    runs-on: [self-hosted, Linux, X64, prod]
+    environment: production
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Deploy
+        env:
+          H75_JWT_SECRET: ${{ secrets.H75_JWT_SECRET }}
+          H75_OAUTH_STATE_SECRET: ${{ secrets.H75_OAUTH_STATE_SECRET }}
+          H75_ADMIN_EMAIL: ${{ secrets.H75_ADMIN_EMAIL }}
+          H75_ADMIN_PASSWORD: ${{ secrets.H75_ADMIN_PASSWORD }}
+          GOOGLE_CLIENT_ID: ${{ secrets.GOOGLE_CLIENT_ID }}
+          GOOGLE_CLIENT_SECRET: ${{ secrets.GOOGLE_CLIENT_SECRET }}
+          LOGIN_GITHUB_CLIENT_ID: ${{ secrets.LOGIN_GITHUB_CLIENT_ID }}
+          LOGIN_GITHUB_CLIENT_SECRET: ${{ secrets.LOGIN_GITHUB_CLIENT_SECRET }}
+        run: |
+          set -euo pipefail
+          DEPLOY_DIR=/opt/75hard
+
+          cat > /tmp/75hard.env <<ENVEOF
+          ENV=production
+          PORT=8080
+          APP_URL=https://75hard.biswas.me
+          LOG_LEVEL=info
+          DB_PATH=/data/75hard.db
+          PHOTOS_DIR=/data/photos
+          FRONTEND_DIST=/app/web/dist
+          CORS_ALLOWED_ORIGINS=https://75hard.biswas.me
+          JWT_SECRET=${H75_JWT_SECRET}
+          OAUTH_STATE_SECRET=${H75_OAUTH_STATE_SECRET}
+          OAUTH_SUCCESS_URL=https://75hard.biswas.me/oauth/callback
+          OAUTH_ERROR_URL=https://75hard.biswas.me/login
+          GOOGLE_CLIENT_ID=${GOOGLE_CLIENT_ID}
+          GOOGLE_CLIENT_SECRET=${GOOGLE_CLIENT_SECRET}
+          LOGIN_GITHUB_CLIENT_ID=${LOGIN_GITHUB_CLIENT_ID}
+          LOGIN_GITHUB_CLIENT_SECRET=${LOGIN_GITHUB_CLIENT_SECRET}
+          ADMIN_EMAIL=${H75_ADMIN_EMAIL}
+          ADMIN_PASSWORD=${H75_ADMIN_PASSWORD}
+          ENVEOF
+          # Strip the heredoc's YAML indentation, or every value is prefixed
+          # with spaces and the app reads garbage.
+          sed -i 's/^[[:space:]]*//' /tmp/75hard.env
+
+          sudo mkdir -p "${DEPLOY_DIR}/data/photos"
+          sudo cp docker-compose.production.yml "${DEPLOY_DIR}/docker-compose.yml"
+          sudo mv /tmp/75hard.env "${DEPLOY_DIR}/.env"
+          sudo chmod 600 "${DEPLOY_DIR}/.env"
+
+          cd "${DEPLOY_DIR}"
+          sudo docker compose pull
+          sudo docker compose up -d --remove-orphans
+          sudo docker image prune -f
+
+      - name: Wait for health
+        run: |
+          set -euo pipefail
+          for i in $(seq 1 30); do
+            if curl -fsS http://127.0.0.1:13431/health > /dev/null; then
+              echo "healthy after ${i}s"
+              exit 0
+            fi
+            sleep 1
+          done
+          echo "::error::service did not become healthy"
+          sudo docker compose -f /opt/75hard/docker-compose.yml logs --tail=100
+          exit 1
+
+      - name: Purge Cloudflare cache
+        env:
+          CF_API_TOKEN: ${{ secrets.CF_API_TOKEN }}
+          CF_ZONE_ID: ${{ secrets.CF_ZONE_ID }}
+        run: |
+          if [ -n "${CF_API_TOKEN:-}" ] && [ -n "${CF_ZONE_ID:-}" ]; then
+            curl -sS -X POST "https://api.cloudflare.com/client/v4/zones/${CF_ZONE_ID}/purge_cache" \
+              -H "Authorization: Bearer ${CF_API_TOKEN}" \
+              -H "Content-Type: application/json" \
+              -d '{"hosts":["75hard.biswas.me"]}' > /dev/null
+            echo "Cloudflare cache purged"
+          fi
+
+      - name: Summary
+        run: |
+          {
+            echo "### Deployed to https://75hard.biswas.me"
+            echo ""
+            echo "- Image tag: \`${{ needs.build.outputs.tag }}\`"
+            echo "- Commit: \`${GITHUB_SHA::7}\`"
+          } >> "$GITHUB_STEP_SUMMARY"

@@ -1,0 +1,253 @@
+import type {
+  AuthConfig,
+  AuthResponse,
+  Day,
+  DaySummary,
+  Meal,
+  Photo,
+  Program,
+  ProgramTask,
+  Stats,
+  User,
+  Workout,
+} from './types'
+
+const BASE_URL = import.meta.env.VITE_API_URL || ''
+const TOKEN_KEY = 'sh_token'
+
+export class ApiError extends Error {
+  status: number
+  code: string
+
+  constructor(message: string, status: number, code = '') {
+    super(message)
+    this.status = status
+    this.code = code
+  }
+}
+
+class ApiClient {
+  private token: string | null
+
+  constructor() {
+    this.token = localStorage.getItem(TOKEN_KEY)
+  }
+
+  setToken(token: string | null) {
+    this.token = token
+    if (token) localStorage.setItem(TOKEN_KEY, token)
+    else localStorage.removeItem(TOKEN_KEY)
+  }
+
+  getToken() {
+    return this.token
+  }
+
+  /** Absolute URL for an image, with the bearer token unavailable to <img>. */
+  private authHeaders(): Record<string, string> {
+    return this.token ? { Authorization: `Bearer ${this.token}` } : {}
+  }
+
+  private async request<T>(path: string, options: RequestInit = {}): Promise<T> {
+    const headers: Record<string, string> = {
+      ...this.authHeaders(),
+      ...(options.headers as Record<string, string>),
+    }
+    if (options.body && !(options.body instanceof FormData)) {
+      headers['Content-Type'] = 'application/json'
+    }
+
+    const res = await fetch(`${BASE_URL}${path}`, { ...options, headers })
+
+    if (res.status === 204) return {} as T
+
+    // An HTML error page from nginx would blow up JSON.parse with a useless
+    // message, so check the content type before trusting the body.
+    const contentType = res.headers.get('content-type') || ''
+    if (!contentType.includes('application/json')) {
+      if (!res.ok) throw new ApiError(`Request failed (${res.status})`, res.status)
+      return {} as T
+    }
+
+    const data = await res.json()
+    if (!res.ok) {
+      throw new ApiError(data?.error || `Request failed (${res.status})`, res.status, data?.code || '')
+    }
+    return data as T
+  }
+
+  // ---- auth ----
+
+  authConfig() {
+    return this.request<AuthConfig>('/api/auth/config')
+  }
+
+  signup(body: { email: string; password: string; name?: string; timezone?: string }) {
+    return this.request<AuthResponse>('/api/auth/signup', {
+      method: 'POST',
+      body: JSON.stringify(body),
+    })
+  }
+
+  login(email: string, password: string) {
+    return this.request<AuthResponse>('/api/auth/login', {
+      method: 'POST',
+      body: JSON.stringify({ email, password }),
+    })
+  }
+
+  me() {
+    return this.request<User>('/api/me')
+  }
+
+  updateProfile(body: { name?: string; timezone?: string }) {
+    return this.request<User>('/api/me', { method: 'PATCH', body: JSON.stringify(body) })
+  }
+
+  changePassword(current_password: string, new_password: string) {
+    return this.request<{ ok: boolean }>('/api/me/password', {
+      method: 'POST',
+      body: JSON.stringify({ current_password, new_password }),
+    })
+  }
+
+  // ---- programs ----
+
+  activeProgram() {
+    return this.request<Program>('/api/programs/active')
+  }
+
+  listPrograms() {
+    return this.request<Program[]>('/api/programs')
+  }
+
+  createProgram(body: {
+    name?: string
+    start_date?: string
+    length_days?: number
+    strict_restart?: boolean
+    daily_kcal_target?: number | null
+    tasks?: Array<Partial<ProgramTask>>
+  }) {
+    return this.request<Program>('/api/programs', { method: 'POST', body: JSON.stringify(body) })
+  }
+
+  updateProgram(id: number, body: Record<string, unknown>) {
+    return this.request<Program>(`/api/programs/${id}`, { method: 'PATCH', body: JSON.stringify(body) })
+  }
+
+  restartProgram(id: number) {
+    return this.request<Program>(`/api/programs/${id}/restart`, { method: 'POST' })
+  }
+
+  addTask(programId: number, body: Partial<ProgramTask>) {
+    return this.request<ProgramTask[]>(`/api/programs/${programId}/tasks`, {
+      method: 'POST',
+      body: JSON.stringify(body),
+    })
+  }
+
+  updateTask(programId: number, taskId: number, body: Partial<ProgramTask>) {
+    return this.request<ProgramTask[]>(`/api/programs/${programId}/tasks/${taskId}`, {
+      method: 'PATCH',
+      body: JSON.stringify(body),
+    })
+  }
+
+  deleteTask(programId: number, taskId: number) {
+    return this.request<{ ok: boolean }>(`/api/programs/${programId}/tasks/${taskId}`, {
+      method: 'DELETE',
+    })
+  }
+
+  // ---- days ----
+
+  today() {
+    return this.request<Day>('/api/today')
+  }
+
+  listDays(programId: number) {
+    return this.request<DaySummary[]>(`/api/programs/${programId}/days`)
+  }
+
+  getDay(programId: number, dayNumber: number) {
+    return this.request<Day>(`/api/programs/${programId}/days/${dayNumber}`)
+  }
+
+  updateDay(programId: number, dayNumber: number, body: { note?: string; weight_kg?: number }) {
+    return this.request<Day>(`/api/programs/${programId}/days/${dayNumber}`, {
+      method: 'PATCH',
+      body: JSON.stringify(body),
+    })
+  }
+
+  toggleTask(
+    programId: number,
+    dayNumber: number,
+    taskId: number,
+    body: { done?: boolean; value?: number; note?: string },
+  ) {
+    return this.request<Day>(`/api/programs/${programId}/days/${dayNumber}/tasks/${taskId}`, {
+      method: 'POST',
+      body: JSON.stringify(body),
+    })
+  }
+
+  stats() {
+    return this.request<Stats>('/api/stats')
+  }
+
+  // ---- photos ----
+
+  listPhotos(kind?: string) {
+    const q = kind ? `?kind=${encodeURIComponent(kind)}` : ''
+    return this.request<Photo[]>(`/api/photos${q}`)
+  }
+
+  uploadPhoto(file: Blob, opts: { kind?: string; dayNumber?: number; caption?: string } = {}) {
+    const form = new FormData()
+    form.append('file', file, 'photo.webp')
+    if (opts.kind) form.append('kind', opts.kind)
+    if (opts.dayNumber) form.append('day_number', String(opts.dayNumber))
+    if (opts.caption) form.append('caption', opts.caption)
+    return this.request<Photo>('/api/photos', { method: 'POST', body: form })
+  }
+
+  deletePhoto(id: number) {
+    return this.request<{ ok: boolean }>(`/api/photos/${id}`, { method: 'DELETE' })
+  }
+
+  /**
+   * Photos sit behind bearer auth, so an <img src> cannot fetch them directly.
+   * Fetch the bytes and hand back an object URL the caller must revoke.
+   */
+  async photoObjectURL(url: string): Promise<string> {
+    const res = await fetch(`${BASE_URL}${url}`, { headers: this.authHeaders() })
+    if (!res.ok) throw new ApiError('could not load image', res.status)
+    return URL.createObjectURL(await res.blob())
+  }
+
+  // ---- nutrition and training ----
+
+  createMeal(body: Record<string, unknown>) {
+    return this.request<Meal>('/api/meals', { method: 'POST', body: JSON.stringify(body) })
+  }
+
+  updateMeal(id: number, body: Record<string, unknown>) {
+    return this.request<Meal>(`/api/meals/${id}`, { method: 'PATCH', body: JSON.stringify(body) })
+  }
+
+  deleteMeal(id: number) {
+    return this.request<{ ok: boolean }>(`/api/meals/${id}`, { method: 'DELETE' })
+  }
+
+  createWorkout(body: Record<string, unknown>) {
+    return this.request<Workout>('/api/workouts', { method: 'POST', body: JSON.stringify(body) })
+  }
+
+  deleteWorkout(id: number) {
+    return this.request<{ ok: boolean }>(`/api/workouts/${id}`, { method: 'DELETE' })
+  }
+}
+
+export const api = new ApiClient()

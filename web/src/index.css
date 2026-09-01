@@ -1,0 +1,89 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    color-scheme: dark;
+  }
+
+  html {
+    @apply h-full;
+    /* Clip sideways overflow on the root, not on body: setting overflow-x on
+       body makes body its own scroll container, which stops the page
+       scrolling vertically at all. */
+    overflow-x: clip;
+  }
+
+  body {
+    @apply bg-ink-950 text-ink-200 antialiased;
+    /* min-height, not height: the page has to be free to grow past the
+       viewport and scroll. */
+    min-height: 100%;
+    /* Keep content clear of the notch and the home indicator on a phone. */
+    padding-top: env(safe-area-inset-top);
+    padding-bottom: env(safe-area-inset-bottom);
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  #root {
+    /* dvh, not %, so this still resolves once body is auto-height — and so
+       mobile browser chrome appearing does not clip the last row. */
+    min-height: 100dvh;
+  }
+
+  input,
+  textarea,
+  select {
+    /* Anything under 16px makes iOS Safari zoom on focus. */
+    font-size: 16px;
+  }
+
+  ::selection {
+    @apply bg-flame-500/30;
+  }
+}
+
+@layer components {
+  .card {
+    @apply rounded-2xl bg-ink-900 border border-ink-800;
+  }
+
+  .btn {
+    @apply inline-flex items-center justify-center gap-2 rounded-xl px-4 py-3 font-medium
+           transition-all duration-150 active:scale-[0.97] disabled:opacity-40
+           disabled:pointer-events-none select-none;
+  }
+
+  .btn-primary {
+    @apply btn bg-flame-500 text-ink-950 hover:bg-flame-400;
+  }
+
+  .btn-ghost {
+    @apply btn bg-ink-850 text-ink-200 hover:bg-ink-800 border border-ink-800;
+  }
+
+  .btn-danger {
+    @apply btn bg-red-500/15 text-red-400 hover:bg-red-500/25 border border-red-500/25;
+  }
+
+  .field {
+    @apply w-full rounded-xl bg-ink-850 border border-ink-800 px-4 py-3 text-ink-100
+           placeholder:text-ink-500 outline-none transition
+           focus:border-flame-500/60 focus:ring-2 focus:ring-flame-500/20;
+  }
+
+  .label {
+    @apply block text-sm font-medium text-ink-400 mb-1.5;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
