@@ -29,6 +29,10 @@ import (
 	"github.com/anchoo2kewl/75hard/api/internal/version"
 )
 
+// aiRequestTimeout bounds a model-backed request. Generous because the work is
+// upstream and the cost is already incurred once the call is in flight.
+const aiRequestTimeout = 4 * time.Minute
+
 func main() {
 	cfg := config.Load()
 	logger := config.MustInitLogger(cfg.Env, cfg.LogLevel)
@@ -63,21 +67,43 @@ func main() {
 		logger.Fatal("failed to open photo store", zap.Error(err))
 	}
 
-	// The AI chain is optional: with no AI_n_* slots configured the app runs
+	// The AI chains are optional: with no AI_n_* slots configured the app runs
 	// exactly as before and the AI endpoints report themselves as unavailable.
+	//
+	// AI_*  is the text chain (recipes, plans, coaching notes).
+	// AIV_* is the vision chain (food photos). It is separate because a
+	// provider's cheap text model and its vision model are different models.
 	aiSvc := aifeatures.New(nil)
-	if chain, err := ai.ChainFromEnv(); err != nil {
-		if !errors.Is(err, ai.ErrNoProviders) {
-			logger.Warn("ai chain not configured", zap.Error(err))
-		} else {
+	textChain, err := ai.ChainFromEnv()
+	if err != nil {
+		if errors.Is(err, ai.ErrNoProviders) {
 			logger.Info("ai features disabled: no AI_1_PROVIDER configured")
+		} else {
+			logger.Warn("ai chain not configured", zap.Error(err))
 		}
 	} else {
-		chain.OnFallback(func(provider string, err error) {
-			logger.Warn("ai provider failed, falling through", zap.String("provider", provider), zap.Error(err))
+		textChain.OnFallback(func(provider string, err error) {
+			logger.Warn("ai provider failed, falling through",
+				zap.String("chain", "text"), zap.String("provider", provider), zap.Error(err))
 		})
-		aiSvc = aifeatures.New(chain)
-		logger.Info("ai features enabled", zap.Strings("chain", chain.Names()))
+
+		visionChain, verr := ai.ChainFromEnvPrefix("AIV")
+		if verr != nil {
+			// No dedicated vision chain: photo requests reuse the text chain,
+			// which works when the primary model is multimodal.
+			visionChain = nil
+			logger.Info("no dedicated vision chain; photo analysis will use the text chain")
+		} else {
+			visionChain.OnFallback(func(provider string, err error) {
+				logger.Warn("ai provider failed, falling through",
+					zap.String("chain", "vision"), zap.String("provider", provider), zap.Error(err))
+			})
+		}
+
+		aiSvc = aifeatures.NewWithVision(textChain, visionChain)
+		logger.Info("ai features enabled",
+			zap.Strings("text", aiSvc.Providers()),
+			zap.Strings("vision", aiSvc.VisionProviders()))
 	}
 
 	server := api.NewServer(database, cfg, logger, photos, aiSvc)
@@ -88,7 +114,6 @@ func main() {
 	r.Use(api.ZapLogger(logger))
 	r.Use(middleware.Recoverer)
 	r.Use(middleware.Compress(5))
-	r.Use(middleware.Timeout(60 * time.Second))
 	r.Use(cors.Handler(cors.Options{
 		AllowedOrigins:   cfg.CORSAllowedOrigins,
 		AllowedMethods:   []string{"GET", "POST", "PATCH", "PUT", "DELETE", "OPTIONS"},
@@ -179,6 +204,9 @@ func main() {
 		r.Group(func(r chi.Router) {
 			r.Use(server.JWTAuth)
 			r.Use(api.RateLimitMiddleware(cfg.RateLimitPerMin))
+			// Ordinary handlers are database work and should never take this
+			// long; the AI group overrides it below.
+			r.Use(middleware.Timeout(60 * time.Second))
 
 			r.Get("/me", server.HandleMe)
 			r.Patch("/me", server.HandleUpdateProfile)
@@ -220,6 +248,11 @@ func main() {
 			// these is a paid upstream call, not a database read.
 			r.Group(func(r chi.Router) {
 				r.Use(api.RateLimitMiddleware(20))
+				// A recipe or plan request against a large model routinely
+				// takes most of a minute, so the 60s budget that suits a
+				// database read would cut it off mid-answer — and the call is
+				// already paid for by then.
+				r.Use(middleware.Timeout(aiRequestTimeout))
 				r.Get("/ai/status", server.HandleAIStatus)
 				r.Post("/ai/food", server.HandleAnalyzeFood)
 				r.Post("/ai/recipes", server.HandleSuggestRecipes)

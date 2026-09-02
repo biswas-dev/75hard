@@ -15,6 +15,11 @@ import (
 	"go.uber.org/zap"
 )
 
+// aiCallTimeout bounds the upstream model call. Detached from the request
+// context so a proxy giving up early cannot cancel a call already paid for,
+// but still bounded so a hung provider does not leak a goroutine forever.
+const aiCallTimeout = 3 * time.Minute
+
 // DailyAILimit caps model calls per user per rolling 24 hours. Generous for
 // real use, low enough that a runaway client cannot spend the key.
 const DailyAILimit = 40
@@ -89,7 +94,7 @@ func (s *Server) HandleAnalyzeFood(w http.ResponseWriter, r *http.Request) {
 
 	// Detached from the request context on purpose: an edge proxy that gives
 	// up at 30s would otherwise cancel a call the user has already paid for.
-	callCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 3*time.Minute)
+	callCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), aiCallTimeout)
 	defer cancel()
 
 	estimate, meta, err := s.ai.EstimateFood(callCtx, image, "image/jpeg", req.Hint)
@@ -183,7 +188,7 @@ func (s *Server) HandleSuggestRecipes(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	callCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 3*time.Minute)
+	callCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), aiCallTimeout)
 	defer cancel()
 
 	recipes, meta, err := s.ai.SuggestRecipes(callCtx, air)
@@ -239,7 +244,7 @@ func (s *Server) HandleBuildPlan(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	callCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 3*time.Minute)
+	callCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), aiCallTimeout)
 	defer cancel()
 
 	plan, meta, err := s.ai.BuildPlan(callCtx, history)
@@ -285,7 +290,7 @@ func (s *Server) HandleCoachNote(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	callCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 2*time.Minute)
+	callCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), aiCallTimeout)
 	defer cancel()
 
 	note, meta, err := s.ai.DailyNote(callCtx, history)

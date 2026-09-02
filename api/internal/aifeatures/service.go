@@ -27,13 +27,42 @@ const (
 )
 
 // Service performs the app's AI calls against a provider chain.
+//
+// Vision gets its own chain because a provider's cheapest text model and its
+// vision model are rarely the same one — DeepSeek, for instance, bills
+// deepseek-v4-flash for text and a separate model for images. Sending a photo
+// to a text-only model fails at the provider, so the two are kept apart.
 type Service struct {
-	chain *ai.Chain
+	chain       *ai.Chain
+	visionChain *ai.Chain
 }
 
-// New builds a Service. A nil chain is allowed and reports Enabled() == false,
-// so the app runs normally with the AI features simply switched off.
+// New builds a Service using one chain for everything. A nil chain is allowed
+// and reports Enabled() == false, so the app runs normally with the AI
+// features simply switched off.
 func New(chain *ai.Chain) *Service { return &Service{chain: chain} }
+
+// NewWithVision builds a Service with a separate chain for image requests.
+// A nil vision chain falls back to the text chain.
+func NewWithVision(chain, vision *ai.Chain) *Service {
+	return &Service{chain: chain, visionChain: vision}
+}
+
+// vision returns the chain image requests should use.
+func (s *Service) vision() *ai.Chain {
+	if s.visionChain != nil && s.visionChain.Len() > 0 {
+		return s.visionChain
+	}
+	return s.chain
+}
+
+// VisionProviders lists the chain used for photo analysis.
+func (s *Service) VisionProviders() []string {
+	if !s.Enabled() {
+		return nil
+	}
+	return s.vision().Names()
+}
 
 // Enabled reports whether any provider is configured.
 func (s *Service) Enabled() bool { return s != nil && s.chain != nil && s.chain.Len() > 0 }
@@ -112,7 +141,7 @@ func (s *Service) EstimateFood(ctx context.Context, image []byte, mediaType, hin
 		prompt += " The person says it is: " + h
 	}
 
-	resp, err := s.chain.Complete(ctx, ai.Request{
+	resp, err := s.vision().Complete(ctx, ai.Request{
 		System:    foodSystemPrompt,
 		Messages:  []ai.Message{ai.UserImage(prompt, mediaType, image)},
 		MaxTokens: 1600,
@@ -229,11 +258,13 @@ func (s *Service) SuggestRecipes(ctx context.Context, req RecipeRequest) ([]Reci
 	b.WriteString("\nThis person is doing the 75 Hard challenge, so the food should be simple, high protein and strictly on-plan.")
 
 	msg := ai.UserText(b.String())
+	chain := s.chain
 	if req.Image != nil {
 		msg = ai.UserImage(b.String(), mediaTypeOr(req.MediaType), req.Image)
+		chain = s.vision()
 	}
 
-	resp, err := s.chain.Complete(ctx, ai.Request{
+	resp, err := chain.Complete(ctx, ai.Request{
 		System:    recipeSystemPrompt,
 		Messages:  []ai.Message{msg},
 		MaxTokens: 3000,
