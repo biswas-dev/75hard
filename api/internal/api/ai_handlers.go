@@ -29,10 +29,13 @@ const DailyAILimit = 40
 func (s *Server) HandleAIStatus(w http.ResponseWriter, r *http.Request) {
 	used, _ := s.aiCallsToday(r.Context(), UserID(r.Context()))
 	respondJSON(w, http.StatusOK, map[string]any{
-		"enabled":     s.ai.Enabled(),
-		"providers":   s.ai.Providers(),
-		"used_today":  used,
-		"daily_limit": DailyAILimit,
+		"enabled":   s.ai.Enabled(),
+		"providers": s.ai.Providers(),
+		// Reported separately because photo analysis can run on a different
+		// chain than the text features.
+		"vision_providers": s.ai.VisionProviders(),
+		"used_today":       used,
+		"daily_limit":      DailyAILimit,
 	})
 }
 
