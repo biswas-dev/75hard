@@ -4,6 +4,10 @@ github.com/anchoo2kewl/go-api v0.1.0 h1:l3OhNU+RCJL5WbGKfL45Yz1SQiczykZRLaiKfkSM
 github.com/anchoo2kewl/go-api v0.1.0/go.mod h1:JryzYEUdEs/fJlC0c9aK+l6ppnmrn8N2/9sRr8ktnww=
 github.com/anchoo2kewl/go-login v0.2.1 h1:u7YzEEeCUlAvxBTb19yVVHcAH0LtCaW5/wtqbDTb7RA=
 github.com/anchoo2kewl/go-login v0.2.1/go.mod h1:EyE+DCIMUFTm95JcDtlgqYBOypCBmok/0gO15fCvHvY=
+github.com/anchoo2kewl/go-photo v0.1.0 h1:V6cCn0PPUnuNh5zTdBmLeAVN0gQmR5yPRpLcVLxV3k8=
+github.com/anchoo2kewl/go-photo v0.1.0/go.mod h1:6RGRFI0EM+9t/3OYARDW4UyRxdtYIIgpkyTany5JUnI=
+github.com/anchoo2kewl/go-photo v0.1.1 h1:qGXs5/maI0ukTg1gt7ZHHwAoQnfEPlGytwgbuHa57Y4=
+github.com/anchoo2kewl/go-photo v0.1.1/go.mod h1:6RGRFI0EM+9t/3OYARDW4UyRxdtYIIgpkyTany5JUnI=
 github.com/davecgh/go-spew v1.1.1 h1:vj9j/u1bqnvCEfJOwUhtlOARqs3+rkHYY13jYWTU97c=
 github.com/davecgh/go-spew v1.1.1/go.mod h1:J7Y8YcW2NihsgmVo/mv3lAwl/skON4iLHjSsI+c5H38=
 github.com/dustin/go-humanize v1.0.1 h1:GzkhY7T5VNhEkwH0PVJgjz+fX1rhBrR7pRT3mDkpeCY=

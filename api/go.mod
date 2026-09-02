@@ -15,6 +15,8 @@ require (
 
 require github.com/anchoo2kewl/go-api v0.1.0
 
+require github.com/anchoo2kewl/go-photo v0.1.1 // indirect
+
 require (
 	github.com/anchoo2kewl/go-ai v0.2.0
 	github.com/dustin/go-humanize v1.0.1 // indirect

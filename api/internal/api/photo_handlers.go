@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"fmt"
 	"io"
 	"net/http"
 	"strconv"
@@ -100,6 +101,11 @@ func (s *Server) HandleUploadPhoto(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		if errors.Is(err, photo.ErrUnsupportedType) {
 			respondError(w, http.StatusBadRequest, "that file is not a supported image", "invalid_image")
+			return
+		}
+		if errors.Is(err, photo.ErrTooLarge) {
+			respondError(w, http.StatusRequestEntityTooLarge,
+				fmt.Sprintf("that image is larger than the %d MB limit", s.cfg.MaxUploadBytes>>20), "image_too_large")
 			return
 		}
 		s.log.Error("save photo", zap.Error(err), zap.String("filename", header.Filename))
