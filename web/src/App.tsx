@@ -7,6 +7,7 @@ import { Login } from './routes/Login'
 import { Signup } from './routes/Signup'
 import { ForgotPassword, ResetPassword } from './routes/ForgotPassword'
 import { OAuthCallback } from './routes/OAuthCallback'
+import { Landing } from './routes/Landing'
 import { Today } from './routes/Today'
 
 // The screens behind the tab bar load on demand — the first paint after login
@@ -24,6 +25,17 @@ function ProtectedRoute({ children }: { children: JSX.Element }) {
   if (loading) return <FullPageSpinner />
   if (!user) return <Navigate to="/login" replace />
   return children
+}
+
+/**
+ * The front page is public, but showing a marketing page to somebody who is
+ * already signed in is just an extra tap between them and their day.
+ */
+function RootRoute() {
+  const { user, loading } = useAuth()
+  if (loading) return <FullPageSpinner />
+  if (user) return <Navigate to="/app" replace />
+  return <Landing />
 }
 
 function PublicOnly({ children }: { children: JSX.Element }) {
@@ -47,7 +59,9 @@ export default function App() {
       <BrowserRouter>
         <Suspense fallback={<FullPageSpinner />}>
           <Routes>
-            <Route path="/" element={<Navigate to="/app" replace />} />
+            {/* Signed out, the front page explains the challenge and the app.
+                Signed in, there is nothing to sell — go straight to today. */}
+            <Route path="/" element={<RootRoute />} />
             <Route path="/login" element={<PublicOnly><Login /></PublicOnly>} />
             <Route path="/signup" element={<PublicOnly><Signup /></PublicOnly>} />
             <Route path="/forgot-password" element={<PublicOnly><ForgotPassword /></PublicOnly>} />

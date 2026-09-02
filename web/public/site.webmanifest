@@ -1,0 +1,14 @@
+{
+  "name": "75 Hard",
+  "short_name": "75 Hard",
+  "description": "Six things, every day, for seventy-five days.",
+  "start_url": "/app",
+  "display": "standalone",
+  "background_color": "#08080a",
+  "theme_color": "#ff6b35",
+  "icons": [
+    { "src": "/icon-192.png", "type": "image/png", "sizes": "192x192" },
+    { "src": "/icon-512.png", "type": "image/png", "sizes": "512x512" },
+    { "src": "/icon.svg", "type": "image/svg+xml", "sizes": "any", "purpose": "any" }
+  ]
+}
