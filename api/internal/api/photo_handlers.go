@@ -73,9 +73,11 @@ func (s *Server) HandleUploadPhoto(w http.ResponseWriter, r *http.Request) {
 		programID = &pid
 
 		var startDate string
+		var length int
 		if err := s.db.QueryRowContext(ctx,
-			`SELECT start_date FROM programs WHERE id = ?`, pid).Scan(&startDate); err == nil {
-			onDate := program.LocalDate(time.Now(), s.userLocation(r))
+			`SELECT start_date, length_days FROM programs WHERE id = ?`, pid).
+			Scan(&startDate, &length); err == nil {
+			onDate := clampToProgram(startDate, length, program.LocalDate(time.Now(), s.userLocation(r)))
 			if raw := strings.TrimSpace(r.FormValue("day_number")); raw != "" {
 				if n, err := strconv.Atoi(raw); err == nil && n >= 1 {
 					onDate = program.DateForDay(startDate, n)

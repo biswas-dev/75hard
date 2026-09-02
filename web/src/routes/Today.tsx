@@ -107,6 +107,9 @@ export function Today() {
 
   const pct = day.tasks_total > 0 ? day.tasks_done / day.tasks_total : 0
   const photoTask = day.entries.find((e) => e.kind === 'photo')
+  // current_day is 0 until the start date arrives, so the program is scheduled
+  // but not running yet. Ticking tasks now would log them against day 1 early.
+  const notStarted = program.current_day < 1
 
   return (
     <div className="space-y-5 pb-4">
@@ -116,27 +119,47 @@ export function Today() {
         <div className="flex items-end justify-between">
           <div>
             <p className="text-sm text-ink-500">
-              {new Date(`${day.date}T12:00:00`).toLocaleDateString(undefined, {
-                weekday: 'long',
-                month: 'long',
-                day: 'numeric',
-              })}
+              {new Date(`${notStarted ? program.start_date : day.date}T12:00:00`).toLocaleDateString(
+                undefined,
+                { weekday: 'long', month: 'long', day: 'numeric' },
+              )}
             </p>
             <h1 className="mt-1 text-3xl font-semibold text-ink-100">
-              Day <span className="text-flame-500">{day.day_number}</span>
-              <span className="text-ink-600"> / {program.length_days}</span>
+              {notStarted ? (
+                <>Starts <span className="text-flame-500">soon</span></>
+              ) : (
+                <>
+                  Day <span className="text-flame-500">{day.day_number}</span>
+                  <span className="text-ink-600"> / {program.length_days}</span>
+                </>
+              )}
             </h1>
           </div>
           <DayRing progress={pct} complete={day.status === 'complete'} />
         </div>
 
-        <div className="mt-4 flex gap-2">
+        <div className={`mt-4 flex gap-2 ${notStarted ? 'hidden' : ''}`}>
           <Pill label="Streak" value={`${program.streak} day${program.streak === 1 ? '' : 's'}`} />
           <Pill label="Done" value={`${program.days_complete} / ${program.length_days}`} />
           {day.status === 'complete' && <Pill label="" value="Day complete" tone="good" />}
           {day.status === 'missed' && <Pill label="" value="Missed" tone="bad" />}
         </div>
       </header>
+
+      {notStarted && (
+        <div className="card animate-slide-up border-flame-500/30 bg-flame-500/[0.07] p-4">
+          <p className="font-medium text-flame-400">Your program hasn&apos;t started yet.</p>
+          <p className="mt-1 text-sm text-ink-400">
+            Day 1 is{' '}
+            {new Date(`${program.start_date}T12:00:00`).toLocaleDateString(undefined, {
+              weekday: 'long',
+              month: 'long',
+              day: 'numeric',
+            })}
+            . Everything below is your plan for that day — come back then to start ticking it off.
+          </p>
+        </div>
+      )}
 
       {program.status !== 'active' && (
         <div className="card border-flame-500/30 bg-flame-500/[0.07] p-4">
@@ -167,7 +190,7 @@ export function Today() {
           <TaskRow
             key={entry.task_id}
             entry={entry}
-            disabled={program.status !== 'active'}
+            disabled={program.status !== 'active' || notStarted}
             onToggle={toggle}
           />
         ))}

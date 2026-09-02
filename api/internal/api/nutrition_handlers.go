@@ -386,13 +386,17 @@ func (s *Server) resolveDay(w http.ResponseWriter, r *http.Request, dayNumber *i
 	}
 
 	var startDate string
+	var length int
 	if err := s.db.QueryRowContext(r.Context(),
-		`SELECT start_date FROM programs WHERE id = ?`, programID).Scan(&startDate); err != nil {
+		`SELECT start_date, length_days FROM programs WHERE id = ?`, programID).
+		Scan(&startDate, &length); err != nil {
 		respondError(w, http.StatusInternalServerError, "could not load program", "internal")
 		return 0, 0, false
 	}
 
-	onDate := program.LocalDate(time.Now(), s.userLocation(r))
+	// Clamped for the same reason as the Today screen: logging a meal the
+	// evening before a program starts should land on day 1, not fail.
+	onDate := clampToProgram(startDate, length, program.LocalDate(time.Now(), s.userLocation(r)))
 	if dayNumber != nil && *dayNumber >= 1 {
 		onDate = program.DateForDay(startDate, *dayNumber)
 	}

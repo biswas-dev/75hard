@@ -68,22 +68,48 @@ type Totals struct {
 
 // HandleGetToday returns the current day of the active program, creating the
 // day row on first access.
+//
+// A program can be scheduled to start tomorrow, and it can run past its final
+// day before the user closes it out. Neither is an error, so the date is
+// clamped into the program's window rather than refused — the response's
+// is_today tells the client which case it is looking at.
 func (s *Server) HandleGetToday(w http.ResponseWriter, r *http.Request) {
 	programID, err := s.activeProgramID(r)
 	if err != nil {
 		respondError(w, http.StatusNotFound, "no active program", "no_active_program")
 		return
 	}
-	loc := s.userLocation(r)
-	today := program.LocalDate(time.Now(), loc)
 
-	day, err := s.dayByDate(r, programID, today)
+	var startDate string
+	var length int
+	if err := s.db.QueryRowContext(r.Context(),
+		`SELECT start_date, length_days FROM programs WHERE id = ?`, programID).
+		Scan(&startDate, &length); err != nil {
+		respondError(w, http.StatusInternalServerError, "could not load program", "internal")
+		return
+	}
+
+	today := program.LocalDate(time.Now(), s.userLocation(r))
+
+	day, err := s.dayByDate(r, programID, clampToProgram(startDate, length, today))
 	if err != nil {
 		s.log.Error("load today", zap.Error(err))
 		respondError(w, http.StatusInternalServerError, "could not load today", "internal")
 		return
 	}
 	respondJSON(w, http.StatusOK, day)
+}
+
+// clampToProgram maps a real-world local date onto a date the program actually
+// covers: before it starts, day 1; after it ends, the final day.
+func clampToProgram(startDate string, length int, today string) string {
+	if today < startDate {
+		return startDate
+	}
+	if n := program.DayNumber(startDate, today); length > 0 && n > length {
+		return program.DateForDay(startDate, length)
+	}
+	return today
 }
 
 // HandleGetDay returns a specific day by number.
