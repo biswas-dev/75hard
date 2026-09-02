@@ -152,6 +152,11 @@ jobs:
           sed -i 's/^[[:space:]]*//' /tmp/75hard.env
 
           sudo mkdir -p "${DEPLOY_DIR}/data/photos"
+          # The container runs as uid 1001, and a bind mount takes the host
+          # directory's ownership rather than the image's — so without this the
+          # app cannot create its SQLite file and exits on boot.
+          sudo chown -R 1001:1001 "${DEPLOY_DIR}/data"
+
           sudo cp docker-compose.production.yml "${DEPLOY_DIR}/docker-compose.yml"
           sudo mv /tmp/75hard.env "${DEPLOY_DIR}/.env"
           sudo chmod 600 "${DEPLOY_DIR}/.env"
