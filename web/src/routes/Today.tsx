@@ -3,10 +3,12 @@ import { useNavigate } from 'react-router-dom'
 import { AuthImage } from '../components/AuthImage'
 import { CoachNote } from '../components/CoachNote'
 import { Confetti } from '../components/Confetti'
+import { DailyVitals } from '../components/DailyVitals'
 import { PhotoUpload } from '../components/PhotoUpload'
+import { SummaryPanel } from '../components/SummaryPanel'
 import { TaskRow } from '../components/TaskRow'
 import { ApiError, api } from '../lib/api'
-import type { Day, Entry, Program } from '../lib/types'
+import type { Day, Entry, Program, Summary } from '../lib/types'
 import { MealSheet } from './MealSheet'
 
 export function Today() {
@@ -17,6 +19,7 @@ export function Today() {
   const [error, setError] = useState('')
   const [confetti, setConfetti] = useState(false)
   const [mealOpen, setMealOpen] = useState(false)
+  const [summary, setSummary] = useState<Summary | null>(null)
 
   // Tracks whether the day was already complete, so the celebration fires on
   // the transition rather than on every refetch of a finished day.
@@ -29,6 +32,10 @@ export function Today() {
     try {
       const [p, d] = await Promise.all([api.activeProgram(), api.today()])
       setProgram(p)
+
+      // The summary is a nice-to-have beside the day itself: if it fails, the
+      // page still works, so it is fetched separately and its error swallowed.
+      api.getSummary().then(setSummary).catch(() => setSummary(null))
 
       // A refetch is how the day completes when the last task is a photo
       // upload, so the transition has to be detected here too — not only in
@@ -230,6 +237,12 @@ export function Today() {
           </p>
         </section>
       )}
+
+      {program.status === 'active' && !notStarted && (
+        <DailyVitals programId={program.id} day={day} onSaved={load} />
+      )}
+
+      {summary && <SummaryPanel summary={summary} />}
 
       <section className="card p-4">
         <div className="mb-3 flex items-center justify-between">

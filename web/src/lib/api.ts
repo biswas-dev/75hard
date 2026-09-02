@@ -17,6 +17,8 @@ import type {
   Recipe,
   Roll,
   Stats,
+  StravaStatus,
+  Summary,
   User,
   Workout,
 } from './types'
@@ -187,7 +189,11 @@ class ApiClient {
     return this.request<Day>(`/api/programs/${programId}/days/${dayNumber}`)
   }
 
-  updateDay(programId: number, dayNumber: number, body: { note?: string; weight_kg?: number }) {
+  updateDay(
+    programId: number,
+    dayNumber: number,
+    body: { note?: string; weight_kg?: number; resting_hr?: number },
+  ) {
     return this.request<Day>(`/api/programs/${programId}/days/${dayNumber}`, {
       method: 'PATCH',
       body: JSON.stringify(body),
@@ -345,6 +351,28 @@ class ApiClient {
 
   deleteMeditation(id: number) {
     return this.request<{ ok: boolean }>(`/api/meditations/${id}`, { method: 'DELETE' })
+  }
+
+  /** Everything the main page renders, in one call. */
+  getSummary() {
+    return this.request<Summary>('/api/summary')
+  }
+
+  stravaStatus() {
+    return this.request<StravaStatus>('/api/strava/status')
+  }
+
+  /** Returns the Strava consent URL to send the browser to. */
+  stravaConnect() {
+    return this.request<{ url: string }>('/api/strava/connect', { method: 'POST' })
+  }
+
+  stravaSync() {
+    return this.request<{ imported: number }>('/api/strava/sync', { method: 'POST' })
+  }
+
+  stravaDisconnect() {
+    return this.request<{ ok: boolean }>('/api/strava', { method: 'DELETE' })
   }
 
   /** Re-runs a background food estimate that failed, usually on quota. */

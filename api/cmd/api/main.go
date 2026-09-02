@@ -211,6 +211,14 @@ func main() {
 			}
 		})
 
+		// Strava sends the browser back on a plain redirect with no bearer
+		// token, so the callback cannot sit behind JWTAuth. It identifies the
+		// user from the signed state it issued at connect time instead.
+		r.Group(func(r chi.Router) {
+			r.Use(api.RateLimitMiddleware(20))
+			r.Get("/strava/callback", server.HandleStravaCallback)
+		})
+
 		// Everything below requires a valid token.
 		r.Group(func(r chi.Router) {
 			r.Use(server.JWTAuth)
@@ -242,6 +250,17 @@ func main() {
 			r.Post("/programs/{programID}/days/{dayNumber}/tasks/{taskID}", server.HandleToggleTask)
 
 			r.Get("/stats", server.HandleGetStats)
+			// One call for the whole main page: five round trips on a phone is
+			// the difference between the page appearing and assembling itself.
+			r.Get("/summary", server.HandleGetSummary)
+
+			// Strava. The callback is registered outside this group because
+			// it is a browser redirect carrying a signed state rather than a
+			// bearer token.
+			r.Get("/strava/status", server.HandleStravaStatus)
+			r.Post("/strava/connect", server.HandleStravaConnect)
+			r.Post("/strava/sync", server.HandleStravaSync)
+			r.Delete("/strava", server.HandleStravaDisconnect)
 
 			r.Get("/photos", server.HandleListPhotos)
 			r.Post("/photos", server.HandleUploadPhoto)

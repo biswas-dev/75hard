@@ -24,6 +24,7 @@ type Day struct {
 	Status      string   `json:"status"`
 	Note        string   `json:"note"`
 	WeightKg    *float64 `json:"weight_kg"`
+	RestingHR   *int     `json:"resting_hr"`
 	CompletedAt *string  `json:"completed_at"`
 
 	IsToday    bool      `json:"is_today"`
@@ -358,6 +359,11 @@ func (s *Server) HandleToggleTask(w http.ResponseWriter, r *http.Request) {
 type updateDayRequest struct {
 	Note     *string  `json:"note"`
 	WeightKg *float64 `json:"weight_kg"`
+	// RestingHR is entered by hand because Strava does not expose it: its API
+	// returns average and max heart rate per activity, while true resting HR
+	// lives in the device app. One optional number a morning is the only way
+	// to see it trend across the 75 days.
+	RestingHR *int `json:"resting_hr"`
 }
 
 // HandleUpdateDay saves the day's journal note and weigh-in.
@@ -398,8 +404,25 @@ func (s *Server) HandleUpdateDay(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	if req.WeightKg != nil {
+		// Zero clears the entry rather than recording a 0 kg weigh-in.
+		var value any
+		if *req.WeightKg > 0 {
+			value = *req.WeightKg
+		}
 		if _, err := s.db.ExecContext(r.Context(),
-			`UPDATE days SET weight_kg = ? WHERE id = ?`, *req.WeightKg, dayID); err != nil {
+			`UPDATE days SET weight_kg = ? WHERE id = ?`, value, dayID); err != nil {
+			respondError(w, http.StatusInternalServerError, "could not update day", "internal")
+			return
+		}
+	}
+	if req.RestingHR != nil {
+		var value any
+		// A resting pulse outside this range is a typo, not a reading.
+		if *req.RestingHR >= 25 && *req.RestingHR <= 200 {
+			value = *req.RestingHR
+		}
+		if _, err := s.db.ExecContext(r.Context(),
+			`UPDATE days SET resting_hr = ? WHERE id = ?`, value, dayID); err != nil {
 			respondError(w, http.StatusInternalServerError, "could not update day", "internal")
 			return
 		}
@@ -587,8 +610,10 @@ func (s *Server) dayByDate(r *http.Request, programID int64, onDate string) (*Da
 
 	d := &Day{ProgramID: programID}
 	if err := s.db.QueryRowContext(ctx,
-		`SELECT id, day_number, on_date, status, note, weight_kg, completed_at FROM days WHERE id = ?`, dayID).
-		Scan(&d.ID, &d.DayNumber, &d.Date, &d.Status, &d.Note, &d.WeightKg, &d.CompletedAt); err != nil {
+		`SELECT id, day_number, on_date, status, note, weight_kg, resting_hr, completed_at
+		   FROM days WHERE id = ?`, dayID).
+		Scan(&d.ID, &d.DayNumber, &d.Date, &d.Status, &d.Note, &d.WeightKg, &d.RestingHR,
+			&d.CompletedAt); err != nil {
 		return nil, err
 	}
 	d.IsToday = d.Date == program.LocalDate(time.Now(), s.userLocation(r))

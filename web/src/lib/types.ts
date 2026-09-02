@@ -174,6 +174,11 @@ export interface Day {
   status: 'pending' | 'complete' | 'missed'
   note: string
   weight_kg: number | null
+  /**
+   * Entered by hand: Strava's API exposes average and max HR per activity,
+   * but true resting HR lives in the device app, not in Strava.
+   */
+  resting_hr: number | null
   completed_at: string | null
   is_today: boolean
   tasks_done: number
@@ -339,4 +344,69 @@ export interface Roll {
   poses: Pose[]
   first_by_pose: Record<string, Photo | null>
   latest_by_pose: Record<string, Photo | null>
+}
+
+// ---- daily summary ----
+
+export interface VitalPoint {
+  day_number: number
+  date: string
+  weight_kg?: number
+  resting_hr?: number
+}
+
+/** A measurement's arc over the attempt. All fields absent until logged. */
+export interface Trend {
+  first?: number
+  latest?: number
+  /** latest - first. Negative is an improvement for everything here. */
+  change?: number
+  /** The lowest reading: weight, resting HR and training HR all improve down. */
+  best?: number
+  average?: number
+  count: number
+}
+
+export interface HeartRatePoint {
+  day_number: number
+  date: string
+  average_hr: number
+  max_hr: number
+  minutes: number
+}
+
+export interface Summary {
+  program_id: number
+  current_day: number
+  length_days: number
+  days_complete: number
+  days_missed: number
+  streak: number
+  best_streak: number
+  percent_done: number
+  total_photos: number
+  total_workouts: number
+  total_minutes: number
+  outdoor_minutes: number
+  meditation_minutes: number
+  avg_kcal: number
+  vitals: VitalPoint[]
+  weight: Trend
+  resting_hr: Trend
+  heart_rate: HeartRatePoint[]
+  /** Average training HR over time — the fitness signal Strava can supply. */
+  activity_hr: Trend
+}
+
+// ---- strava ----
+
+export interface StravaStatus {
+  /** False when the server has no Strava application configured at all. */
+  configured: boolean
+  connected: boolean
+  athlete?: string
+  athlete_id?: number
+  last_sync_at?: string
+  last_error?: string
+  activities: number
 }

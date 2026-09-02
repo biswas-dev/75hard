@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
+import { StravaCard } from '../components/StravaCard'
 import { api } from '../lib/api'
 import type { Program } from '../lib/types'
 import { useAuth } from '../state/AuthContext'
@@ -174,6 +175,8 @@ export function Settings() {
           )}
         </section>
       )}
+
+      <StravaCard />
 
       {programs.length > 1 && (
         <section className="card p-4">

@@ -43,6 +43,22 @@ type Config struct {
 	OAuthSuccessURL    string
 	OAuthErrorURL      string
 
+	// Strava. Empty credentials disable the integration entirely, which is a
+	// valid state rather than a startup failure — the Connect button simply
+	// reports that the server has no Strava app configured.
+	StravaClientID     string
+	StravaClientSecret string
+	// StravaRedirectURL must exactly match the callback registered with the
+	// Strava application, or the exchange is rejected.
+	StravaRedirectURL string
+	// Where the browser is sent once the connection succeeds or fails.
+	StravaSuccessURL string
+	StravaErrorURL   string
+	// Endpoint overrides. Empty means the real Strava; they exist so the
+	// integration can be exercised end to end against a stub.
+	StravaAPIBase  string
+	StravaTokenURL string
+
 	// Seeded on first boot so a fresh deploy is usable immediately.
 	AdminEmail    string
 	AdminPassword string
@@ -93,6 +109,14 @@ func Load() *Config {
 		OAuthSuccessURL:    getEnv("OAUTH_SUCCESS_URL", "http://localhost:5175/oauth/callback"),
 		OAuthErrorURL:      getEnv("OAUTH_ERROR_URL", "http://localhost:5175/login"),
 
+		StravaClientID:     getEnv("STRAVA_CLIENT_ID", ""),
+		StravaClientSecret: getEnv("STRAVA_CLIENT_SECRET", ""),
+		StravaRedirectURL:  getEnv("STRAVA_REDIRECT_URL", "http://localhost:8087/api/strava/callback"),
+		StravaSuccessURL:   getEnv("STRAVA_SUCCESS_URL", "http://localhost:5175/settings?strava=connected"),
+		StravaErrorURL:     getEnv("STRAVA_ERROR_URL", "http://localhost:5175/settings?strava=error"),
+		StravaAPIBase:      getEnv("STRAVA_API_BASE", ""),
+		StravaTokenURL:     getEnv("STRAVA_TOKEN_URL", ""),
+
 		AdminEmail:    getEnv("ADMIN_EMAIL", ""),
 		AdminPassword: getEnv("ADMIN_PASSWORD", ""),
 
@@ -116,6 +140,11 @@ func Load() *Config {
 
 // IsProduction reports whether the server is running in production.
 func (c *Config) IsProduction() bool { return c.Env == "production" }
+
+// StravaEnabled reports whether a Strava application is configured.
+func (c *Config) StravaEnabled() bool {
+	return c.StravaClientID != "" && c.StravaClientSecret != ""
+}
 
 // OAuthEnabled reports whether at least one OAuth provider is configured.
 func (c *Config) OAuthEnabled() bool {
