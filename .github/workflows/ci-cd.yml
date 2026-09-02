@@ -14,6 +14,9 @@
 #   H75_ADMIN_PASSWORD   seeded admin password (optional)
 #   GOOGLE_CLIENT_ID / GOOGLE_CLIENT_SECRET               (optional)
 #   LOGIN_GITHUB_CLIENT_ID / LOGIN_GITHUB_CLIENT_SECRET   (optional)
+#   STRAVA_CLIENT_ID / STRAVA_CLIENT_SECRET               (optional)
+#     The callback domain registered with the Strava app must match the host
+#     in STRAVA_REDIRECT_URL below, or the token exchange is rejected.
 #   CF_API_TOKEN / CF_ZONE_ID   to purge the Cloudflare cache after deploy
 #   NVIDIA_API_KEY              primary AI provider (also serves vision)
 #   DEEPSEEK_API_KEY            backup AI provider
@@ -127,6 +130,8 @@ jobs:
           LOGIN_GITHUB_CLIENT_SECRET: ${{ secrets.LOGIN_GITHUB_CLIENT_SECRET }}
           NVIDIA_API_KEY: ${{ secrets.NVIDIA_API_KEY }}
           DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}
+          STRAVA_CLIENT_ID: ${{ secrets.STRAVA_CLIENT_ID }}
+          STRAVA_CLIENT_SECRET: ${{ secrets.STRAVA_CLIENT_SECRET }}
         run: |
           set -euo pipefail
           DEPLOY_DIR=/opt/75hard
@@ -162,6 +167,11 @@ jobs:
           AIV_2_PROVIDER=deepseek
           AIV_2_MODEL=deepseek-v4-flash-vision-exp
           AIV_2_API_KEY=${DEEPSEEK_API_KEY}
+          STRAVA_CLIENT_ID=${STRAVA_CLIENT_ID}
+          STRAVA_CLIENT_SECRET=${STRAVA_CLIENT_SECRET}
+          STRAVA_REDIRECT_URL=https://75hard.biswas.me/api/strava/callback
+          STRAVA_SUCCESS_URL=https://75hard.biswas.me/settings?strava=connected
+          STRAVA_ERROR_URL=https://75hard.biswas.me/settings?strava=error
           ENVEOF
           # Strip the heredoc's YAML indentation, or every value is prefixed
           # with spaces and the app reads garbage.
