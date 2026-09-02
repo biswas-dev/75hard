@@ -192,6 +192,9 @@ export function Today() {
             entry={entry}
             disabled={program.status !== 'active' || notStarted}
             onToggle={toggle}
+            day={day}
+            onChanged={load}
+            onLogMeal={() => setMealOpen(true)}
           />
         ))}
       </section>
@@ -219,8 +222,12 @@ export function Today() {
             kind="progress"
             dayNumber={day.day_number}
             label="Take today's photo"
+            withPose
             onUploaded={() => load()}
           />
+          <p className="mt-2 text-center text-xs text-ink-600">
+            One photo is enough. Three angles from the same spot tells you more.
+          </p>
         </section>
       )}
 

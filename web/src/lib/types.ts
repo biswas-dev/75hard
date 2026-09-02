@@ -37,6 +37,7 @@ export interface ProgramTask {
   sort_order: number
   required: boolean
   color: string
+  tracker: '' | 'nutrition' | 'workout'
 }
 
 export interface Program {
@@ -73,11 +74,17 @@ export interface Entry {
   note: string
   done: boolean
   completed_at: string | null
+  /** Optional richer panel behind the task; never gates completion. */
+  tracker: '' | 'nutrition' | 'workout'
+  color: string
 }
+
+export type Pose = '' | 'front' | 'side' | 'back'
 
 export interface Photo {
   id: number
   kind: 'progress' | 'food' | 'ingredients'
+  pose: Pose
   day_id: number | null
   day_number: number | null
   caption: string
@@ -290,4 +297,25 @@ export interface Grid {
   today: string
   tasks: GridTask[]
   day_status: string[]
+}
+
+// ---- camera roll ----
+
+export interface RollDay {
+  day_number: number
+  date: string
+  status: 'pending' | 'complete' | 'missed'
+  photos: Photo[]
+}
+
+export interface Roll {
+  program_id: number
+  start_date: string
+  length_days: number
+  current_day: number
+  days: RollDay[]
+  total: number
+  poses: Pose[]
+  first_by_pose: Record<string, Photo | null>
+  latest_by_pose: Record<string, Photo | null>
 }

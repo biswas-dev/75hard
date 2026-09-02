@@ -84,7 +84,13 @@ export function DayDetail() {
         <>
           <section className="space-y-3">
             {day.entries.map((entry) => (
-              <TaskRow key={entry.task_id} entry={entry} onToggle={toggle} />
+              <TaskRow
+                key={entry.task_id}
+                entry={entry}
+                onToggle={toggle}
+                day={day}
+                onChanged={load}
+              />
             ))}
           </section>
 
@@ -106,6 +112,7 @@ export function DayDetail() {
               kind="progress"
               dayNumber={day.day_number}
               label="Add a photo"
+              withPose
               onUploaded={() => load()}
             />
           </section>

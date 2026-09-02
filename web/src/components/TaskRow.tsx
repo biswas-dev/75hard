@@ -1,11 +1,16 @@
 import { useEffect, useRef, useState } from 'react'
-import type { Entry } from '../lib/types'
+import type { Day, Entry } from '../lib/types'
 import { TaskIcon } from './TaskIcon'
+import { TaskTracker } from './TaskTracker'
 
 interface Props {
   entry: Entry
   disabled?: boolean
   onToggle: (entry: Entry, next: { done?: boolean; value?: number }) => void
+  /** Supplying a day enables the task's optional tracker panel. */
+  day?: Day
+  onChanged?: () => void
+  onLogMeal?: () => void
 }
 
 /**
@@ -15,13 +20,17 @@ interface Props {
  * duration tasks expand a stepper so partial progress can be logged, and only
  * complete once they reach their target.
  */
-export function TaskRow({ entry, disabled, onToggle }: Props) {
+export function TaskRow({ entry, disabled, onToggle, day, onChanged, onLogMeal }: Props) {
   const [rippling, setRippling] = useState(false)
   const [expanded, setExpanded] = useState(false)
   const [draft, setDraft] = useState(entry.value ?? 0)
   const rippleTimer = useRef<number>()
 
   const isMetered = entry.kind === 'number' || entry.kind === 'duration'
+  // A tracker is a richer panel behind the task. It never gates completion, so
+  // the row still ticks with one tap whether or not it is open.
+  const hasTracker = Boolean(entry.tracker) && Boolean(day)
+  const expandable = isMetered || hasTracker
   const target = entry.target_num ?? 0
   const progress = isMetered && target > 0 ? Math.min(1, (entry.value ?? 0) / target) : entry.done ? 1 : 0
 
@@ -64,12 +73,13 @@ export function TaskRow({ entry, disabled, onToggle }: Props) {
         entry.done ? 'border-moss-500/30 bg-moss-500/[0.06]' : ''
       }`}
     >
+      <div className="flex w-full items-center">
       <button
         type="button"
         onClick={handlePrimary}
         disabled={disabled}
         aria-pressed={entry.done}
-        className="flex w-full items-center gap-4 p-4 text-left transition active:bg-ink-850/60 disabled:opacity-60"
+        className="flex min-w-0 flex-1 items-center gap-4 p-4 text-left transition active:bg-ink-850/60 disabled:opacity-60"
       >
         {/* The check target: a ring that fills as the task progresses. */}
         <span className="relative flex h-12 w-12 shrink-0 items-center justify-center">
@@ -126,12 +136,33 @@ export function TaskRow({ entry, disabled, onToggle }: Props) {
             optional
           </span>
         )}
-        {isMetered && (
-          <span className={`shrink-0 text-ink-500 transition-transform ${expanded ? 'rotate-180' : ''}`}>
-            <Chevron />
-          </span>
-        )}
       </button>
+
+      {expandable && (
+        <button
+          type="button"
+          aria-expanded={expanded}
+          aria-label={expanded ? `Hide ${entry.title} detail` : `Show ${entry.title} detail`}
+          className={`shrink-0 self-stretch px-4 text-ink-500 transition-transform hover:text-ink-300 ${
+            expanded ? 'rotate-180' : ''
+          }`}
+          onClick={() => setExpanded((v) => !v)}
+        >
+          <Chevron />
+        </button>
+      )}
+      </div>
+
+      {hasTracker && expanded && !isMetered && (
+        <div className="animate-slide-up border-t border-ink-800 p-4">
+          <TaskTracker
+            entry={entry}
+            day={day!}
+            onChanged={() => onChanged?.()}
+            onLogMeal={() => onLogMeal?.()}
+          />
+        </div>
+      )}
 
       {isMetered && expanded && (
         <div className="animate-slide-up border-t border-ink-800 p-4">
@@ -160,6 +191,17 @@ export function TaskRow({ entry, disabled, onToggle }: Props) {
               Mark {formatNumber(target)} {entry.unit}
             </button>
           </div>
+
+          {hasTracker && (
+            <div className="mt-4 border-t border-ink-800 pt-4">
+              <TaskTracker
+                entry={entry}
+                day={day!}
+                onChanged={() => onChanged?.()}
+                onLogMeal={() => onLogMeal?.()}
+              />
+            </div>
+          )}
         </div>
       )}
     </div>

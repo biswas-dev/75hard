@@ -53,6 +53,8 @@ type Entry struct {
 	Note        string   `json:"note"`
 	Done        bool     `json:"done"`
 	CompletedAt *string  `json:"completed_at"`
+	Tracker     string   `json:"tracker"`
+	Color       string   `json:"color"`
 }
 
 // Totals are the day's rolled-up nutrition and training numbers.
@@ -594,7 +596,7 @@ func (s *Server) dayByDate(r *http.Request, programID int64, onDate string) (*Da
 	// Left join so tasks with no entry yet still appear, in template order.
 	rows, err := s.db.QueryContext(ctx, `
 		SELECT pt.id, pt.task_key, pt.title, pt.detail, pt.icon, pt.kind, pt.unit,
-		       pt.target_num, pt.required, pt.sort_order,
+		       pt.target_num, pt.required, pt.sort_order, pt.tracker, pt.color,
 		       te.value_num, COALESCE(te.note, ''), te.completed_at
 		FROM program_tasks pt
 		LEFT JOIN task_entries te ON te.program_task_id = pt.id AND te.day_id = ?
@@ -610,7 +612,8 @@ func (s *Server) dayByDate(r *http.Request, programID int64, onDate string) (*Da
 		var e Entry
 		var required int
 		if err := rows.Scan(&e.TaskID, &e.Key, &e.Title, &e.Detail, &e.Icon, &e.Kind, &e.Unit,
-			&e.TargetNum, &required, &e.SortOrder, &e.Value, &e.Note, &e.CompletedAt); err != nil {
+			&e.TargetNum, &required, &e.SortOrder, &e.Tracker, &e.Color,
+			&e.Value, &e.Note, &e.CompletedAt); err != nil {
 			return nil, err
 		}
 		e.Required = required == 1

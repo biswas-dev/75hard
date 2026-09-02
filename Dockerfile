@@ -26,11 +26,18 @@ RUN CGO_ENABLED=0 GOOS=linux GOARCH=$TARGETARCH go build \
         -X github.com/anchoo2kewl/75hard/api/internal/version.BuildTime=${BUILD_TIME}" \
       -o /out/75hard ./cmd/api
 
+# The operator CLI ships alongside the server so a locked-out account can be
+# recovered with `docker compose exec 75hard /app/admin reset-password ...`
+# rather than hand-written SQL and a bcrypt hash.
+RUN CGO_ENABLED=0 GOOS=linux GOARCH=$TARGETARCH go build \
+      -ldflags="-s -w" -o /out/admin ./cmd/admin
+
 FROM alpine:3.20
 RUN apk add --no-cache ca-certificates tzdata wget && \
     addgroup -g 1001 app && adduser -D -u 1001 -G app app
 WORKDIR /app
 COPY --from=api /out/75hard /app/75hard
+COPY --from=api /out/admin /app/admin
 COPY --from=web /web/dist /app/web/dist
 
 # The photo volume and the database both live under /data.

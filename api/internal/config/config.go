@@ -50,6 +50,14 @@ type Config struct {
 	// Registration is open by default; set to false to lock the instance down
 	// to accounts that already exist.
 	AllowSignup bool
+
+	// ResetTokenInResponse returns the password-reset token in the API
+	// response instead of only logging it. There is no mail sender wired in,
+	// so on a single-operator instance this is the difference between a
+	// working reset flow and one that needs a look at the server logs. Off by
+	// default: on a multi-user instance it would let anyone reset anyone's
+	// password by asking.
+	ResetTokenInResponse bool
 }
 
 // Load reads configuration from the environment, applying defaults suited to
@@ -88,7 +96,8 @@ func Load() *Config {
 		AdminEmail:    getEnv("ADMIN_EMAIL", ""),
 		AdminPassword: getEnv("ADMIN_PASSWORD", ""),
 
-		AllowSignup: getEnvBool("ALLOW_SIGNUP", true),
+		AllowSignup:          getEnvBool("ALLOW_SIGNUP", true),
+		ResetTokenInResponse: getEnvBool("RESET_TOKEN_IN_RESPONSE", false),
 	}
 
 	if c.IsProduction() {

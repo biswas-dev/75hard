@@ -49,6 +49,9 @@ type ProgramTask struct {
 	SortOrder int      `json:"sort_order"`
 	Required  bool     `json:"required"`
 	Color     string   `json:"color"`
+	// Tracker names an optional richer panel behind the task. Never affects
+	// completion — a tap is always enough.
+	Tracker string `json:"tracker"`
 }
 
 type createProgramRequest struct {
@@ -71,6 +74,7 @@ type taskPayload struct {
 	Unit      string   `json:"unit"`
 	Required  *bool    `json:"required"`
 	Color     string   `json:"color"`
+	Tracker   string   `json:"tracker"`
 }
 
 // HandleCreateProgram starts a new attempt, seeding the canonical six tasks
@@ -157,6 +161,7 @@ func (s *Server) HandleCreateProgram(w http.ResponseWriter, r *http.Request) {
 			tasks = append(tasks, taskPayload{
 				Key: d.Key, Title: d.Title, Detail: d.Detail, Icon: d.Icon,
 				Kind: d.Kind, TargetNum: d.TargetNum, Unit: d.Unit, Required: &required,
+				Tracker: d.Tracker,
 			})
 		}
 	}
@@ -183,11 +188,11 @@ func (s *Server) HandleCreateProgram(w http.ResponseWriter, r *http.Request) {
 
 		if _, err := tx.ExecContext(ctx, `
 			INSERT INTO program_tasks (program_id, task_key, title, detail, icon, kind,
-			                           target_num, unit, sort_order, required, color)
-			VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+			                           target_num, unit, sort_order, required, color, tracker)
+			VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 			programID, key, title, strings.TrimSpace(t.Detail), defaultString(t.Icon, "check"),
 			kind, t.TargetNum, strings.TrimSpace(t.Unit), i, boolToInt(required),
-			defaultString(t.Color, paletteColor(i))); err != nil {
+			defaultString(t.Color, paletteColor(i)), trackerOrNone(t.Tracker)); err != nil {
 			s.log.Error("insert program task", zap.Error(err))
 			respondError(w, http.StatusInternalServerError, "could not create tasks", "internal")
 			return
@@ -381,8 +386,8 @@ func (s *Server) HandleRestartProgram(w http.ResponseWriter, r *http.Request) {
 	// Copy the template rather than pointing at the old rows, so editing the
 	// new attempt's tasks can't rewrite the history of the old one.
 	if _, err := tx.ExecContext(ctx, `
-		INSERT INTO program_tasks (program_id, task_key, title, detail, icon, kind, target_num, unit, sort_order, required, color)
-		SELECT ?, task_key, title, detail, icon, kind, target_num, unit, sort_order, required, color
+		INSERT INTO program_tasks (program_id, task_key, title, detail, icon, kind, target_num, unit, sort_order, required, color, tracker)
+		SELECT ?, task_key, title, detail, icon, kind, target_num, unit, sort_order, required, color, tracker
 		FROM program_tasks WHERE program_id = ?`, newID, id); err != nil {
 		respondError(w, http.StatusInternalServerError, "could not copy tasks", "internal")
 		return
@@ -435,11 +440,11 @@ func (s *Server) HandleCreateTask(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if _, err := s.db.ExecContext(r.Context(), `
-		INSERT INTO program_tasks (program_id, task_key, title, detail, icon, kind, target_num, unit, sort_order, required, color)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		INSERT INTO program_tasks (program_id, task_key, title, detail, icon, kind, target_num, unit, sort_order, required, color, tracker)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		id, key, title, strings.TrimSpace(t.Detail), defaultString(t.Icon, "check"),
 		t.Kind, t.TargetNum, strings.TrimSpace(t.Unit), nextOrder, boolToInt(required),
-		defaultString(t.Color, paletteColor(nextOrder))); err != nil {
+		defaultString(t.Color, paletteColor(nextOrder)), trackerOrNone(t.Tracker)); err != nil {
 		if isUniqueViolation(err) {
 			respondError(w, http.StatusConflict, "a task with that key already exists", "task_exists")
 			return
@@ -466,6 +471,7 @@ type updateTaskRequest struct {
 	SortOrder *int     `json:"sort_order"`
 	Required  *bool    `json:"required"`
 	Color     *string  `json:"color"`
+	Tracker   *string  `json:"tracker"`
 }
 
 // HandleUpdateTask edits one task in the template.
@@ -514,6 +520,13 @@ func (s *Server) HandleUpdateTask(w http.ResponseWriter, r *http.Request) {
 	}
 	if req.Required != nil {
 		sets, args = append(sets, "required = ?"), append(args, boolToInt(*req.Required))
+	}
+	if req.Tracker != nil {
+		if !program.ValidTracker(*req.Tracker) {
+			respondError(w, http.StatusBadRequest, "unknown tracker", "invalid_tracker")
+			return
+		}
+		sets, args = append(sets, "tracker = ?"), append(args, *req.Tracker)
 	}
 	if req.Color != nil {
 		if !validHexColor(*req.Color) {
@@ -645,7 +658,7 @@ func (s *Server) loadProgram(r *http.Request, id int64) (Program, error) {
 
 func (s *Server) loadTasks(r *http.Request, programID int64) ([]ProgramTask, error) {
 	rows, err := s.db.QueryContext(r.Context(), `
-		SELECT id, task_key, title, detail, icon, kind, target_num, unit, sort_order, required, color
+		SELECT id, task_key, title, detail, icon, kind, target_num, unit, sort_order, required, color, tracker
 		FROM program_tasks WHERE program_id = ? ORDER BY sort_order, id`, programID)
 	if err != nil {
 		return nil, err
@@ -657,7 +670,7 @@ func (s *Server) loadTasks(r *http.Request, programID int64) ([]ProgramTask, err
 		var t ProgramTask
 		var required int
 		if err := rows.Scan(&t.ID, &t.Key, &t.Title, &t.Detail, &t.Icon, &t.Kind,
-			&t.TargetNum, &t.Unit, &t.SortOrder, &required, &t.Color); err != nil {
+			&t.TargetNum, &t.Unit, &t.SortOrder, &required, &t.Color, &t.Tracker); err != nil {
 			return nil, err
 		}
 		t.Required = required == 1
@@ -745,4 +758,13 @@ func validHexColor(c string) bool {
 		}
 	}
 	return true
+}
+
+// trackerOrNone validates a tracker name, falling back to none rather than
+// rejecting a task over an optional extra.
+func trackerOrNone(t string) string {
+	if program.ValidTracker(t) {
+		return t
+	}
+	return program.TrackerNone
 }

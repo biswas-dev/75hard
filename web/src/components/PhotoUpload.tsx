@@ -1,24 +1,29 @@
 import { useRef, useState } from 'react'
 import { api } from '../lib/api'
 import { compressImage, formatBytes } from '../lib/compress'
-import type { Photo } from '../lib/types'
+import type { Photo, Pose } from '../lib/types'
 
 interface Props {
   kind: 'progress' | 'food' | 'ingredients'
   dayNumber?: number
   label: string
   onUploaded: (photo: Photo) => void
+  /** Offer an angle picker. Only meaningful for progress shots. */
+  withPose?: boolean
 }
 
 /**
  * Camera-first upload button. Compresses in the browser before sending, and
  * reports the saving so the size reduction is visible rather than implied.
  */
-export function PhotoUpload({ kind, dayNumber, label, onUploaded }: Props) {
+export function PhotoUpload({ kind, dayNumber, label, onUploaded, withPose }: Props) {
   const inputRef = useRef<HTMLInputElement>(null)
   const [busy, setBusy] = useState(false)
   const [status, setStatus] = useState('')
   const [error, setError] = useState('')
+  // Front by default: it is the shot people take without thinking, and an
+  // untagged photo still counts, so this only saves a tap.
+  const [pose, setPose] = useState<Pose>('front')
 
   async function handleFile(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0]
@@ -34,7 +39,11 @@ export function PhotoUpload({ kind, dayNumber, label, onUploaded }: Props) {
       const result = await compressImage(file)
       setStatus(`Uploading ${formatBytes(result.bytes)}…`)
 
-      const photo = await api.uploadPhoto(result.blob, { kind, dayNumber })
+      const photo = await api.uploadPhoto(result.blob, {
+        kind,
+        dayNumber,
+        pose: withPose ? pose : undefined,
+      })
 
       const saved = result.originalBytes - result.bytes
       setStatus(
@@ -54,6 +63,25 @@ export function PhotoUpload({ kind, dayNumber, label, onUploaded }: Props) {
 
   return (
     <div>
+      {withPose && (
+        <div className="mb-2 grid grid-cols-3 gap-2">
+          {(['front', 'side', 'back'] as Pose[]).map((p) => (
+            <button
+              key={p}
+              type="button"
+              onClick={() => setPose(p)}
+              className={`rounded-xl border py-2 text-sm capitalize transition ${
+                pose === p
+                  ? 'border-flame-500 bg-flame-500/15 text-flame-400'
+                  : 'border-ink-800 bg-ink-850 text-ink-400'
+              }`}
+            >
+              {p}
+            </button>
+          ))}
+        </div>
+      )}
+
       <input
         ref={inputRef}
         type="file"

@@ -10,9 +10,11 @@ import type {
   Meal,
   Photo,
   Plan,
+  Pose,
   Program,
   ProgramTask,
   Recipe,
+  Roll,
   Stats,
   User,
   Workout,
@@ -214,13 +216,40 @@ class ApiClient {
     return this.request<Photo[]>(`/api/photos${q}`)
   }
 
-  uploadPhoto(file: Blob, opts: { kind?: string; dayNumber?: number; caption?: string } = {}) {
+  uploadPhoto(
+    file: Blob,
+    opts: { kind?: string; dayNumber?: number; caption?: string; pose?: Pose } = {},
+  ) {
     const form = new FormData()
     form.append('file', file, 'photo.webp')
     if (opts.kind) form.append('kind', opts.kind)
     if (opts.dayNumber) form.append('day_number', String(opts.dayNumber))
     if (opts.caption) form.append('caption', opts.caption)
+    if (opts.pose) form.append('pose', opts.pose)
     return this.request<Photo>('/api/photos', { method: 'POST', body: form })
+  }
+
+  updatePhoto(id: number, body: { pose?: Pose; caption?: string }) {
+    return this.request<Photo>(`/api/photos/${id}`, { method: 'PATCH', body: JSON.stringify(body) })
+  }
+
+  roll(programId: number, pose?: Pose) {
+    const q = pose ? `?pose=${encodeURIComponent(pose)}` : ''
+    return this.request<Roll>(`/api/programs/${programId}/roll${q}`)
+  }
+
+  forgotPassword(email: string) {
+    return this.request<{ ok: boolean; message: string; token?: string; reset_url?: string }>(
+      '/api/auth/forgot-password',
+      { method: 'POST', body: JSON.stringify({ email }) },
+    )
+  }
+
+  resetPassword(token: string, newPassword: string) {
+    return this.request<AuthResponse>('/api/auth/reset-password', {
+      method: 'POST',
+      body: JSON.stringify({ token, new_password: newPassword }),
+    })
   }
 
   deletePhoto(id: number) {

@@ -183,6 +183,8 @@ func main() {
 			r.Use(api.RateLimitMiddleware(20))
 			r.Post("/signup", server.HandleSignup)
 			r.Post("/login", server.HandleLogin)
+			r.Post("/forgot-password", server.HandleForgotPassword)
+			r.Post("/reset-password", server.HandleResetPassword)
 			r.Get("/config", func(w http.ResponseWriter, r *http.Request) {
 				w.Header().Set("Content-Type", "application/json")
 				_ = writeJSON(w, map[string]bool{
@@ -235,6 +237,8 @@ func main() {
 			r.Get("/photos", server.HandleListPhotos)
 			r.Post("/photos", server.HandleUploadPhoto)
 			r.Get("/photos/{photoID}/file", server.HandleServePhoto)
+			r.Patch("/photos/{photoID}", server.HandleUpdatePhoto)
+			r.Get("/programs/{programID}/roll", server.HandleGetRoll)
 			r.Delete("/photos/{photoID}", server.HandleDeletePhoto)
 
 			r.Post("/meals", server.HandleCreateMeal)

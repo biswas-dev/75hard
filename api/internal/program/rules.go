@@ -199,6 +199,23 @@ func Streak(statuses map[int]string, throughDay int) int {
 	return n
 }
 
+// Trackers a task can carry. A tracker is an optional richer panel; it never
+// affects whether the task counts as done.
+const (
+	TrackerNone      = ""
+	TrackerNutrition = "nutrition"
+	TrackerWorkout   = "workout"
+)
+
+// ValidTracker reports whether t is a tracker we know how to render.
+func ValidTracker(t string) bool {
+	switch t {
+	case TrackerNone, TrackerNutrition, TrackerWorkout:
+		return true
+	}
+	return false
+}
+
 // DefaultTask is one entry in the starting template.
 type DefaultTask struct {
 	Key       string
@@ -209,6 +226,7 @@ type DefaultTask struct {
 	TargetNum *float64
 	Unit      string
 	Required  bool
+	Tracker   string
 }
 
 func f(v float64) *float64 { return &v }
@@ -221,16 +239,19 @@ func DefaultTasks() []DefaultTask {
 			Key: "workout_indoor", Title: "45-minute workout",
 			Detail: "Any training you like, at least 45 minutes.",
 			Icon:   "dumbbell", Kind: KindDuration, TargetNum: f(45), Unit: "min", Required: true,
+			Tracker: TrackerWorkout,
 		},
 		{
 			Key: "workout_outdoor", Title: "45-minute outdoor workout",
 			Detail: "A second session, outside, whatever the weather.",
 			Icon:   "tree", Kind: KindDuration, TargetNum: f(45), Unit: "min", Required: true,
+			Tracker: TrackerWorkout,
 		},
 		{
 			Key: "diet", Title: "Follow the diet",
-			Detail: "No cheat meals, no alcohol.",
+			Detail: "No cheat meals, no alcohol. Tick it, or log what you ate.",
 			Icon:   "salad", Kind: KindCheck, Required: true,
+			Tracker: TrackerNutrition,
 		},
 		{
 			Key: "water", Title: "Drink 1 gallon of water",

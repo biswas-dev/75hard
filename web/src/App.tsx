@@ -5,6 +5,7 @@ import { AuthProvider, useAuth } from './state/AuthContext'
 
 import { Login } from './routes/Login'
 import { Signup } from './routes/Signup'
+import { ForgotPassword, ResetPassword } from './routes/ForgotPassword'
 import { OAuthCallback } from './routes/OAuthCallback'
 import { Today } from './routes/Today'
 
@@ -49,6 +50,10 @@ export default function App() {
             <Route path="/" element={<Navigate to="/app" replace />} />
             <Route path="/login" element={<PublicOnly><Login /></PublicOnly>} />
             <Route path="/signup" element={<PublicOnly><Signup /></PublicOnly>} />
+            <Route path="/forgot-password" element={<PublicOnly><ForgotPassword /></PublicOnly>} />
+            {/* Not PublicOnly: a signed-in user following a reset link should
+                still be able to set the new password. */}
+            <Route path="/reset-password" element={<ResetPassword />} />
             {/* go-login redirects here with ?token= after a provider sign-in. */}
             <Route path="/oauth/callback" element={<OAuthCallback />} />
 

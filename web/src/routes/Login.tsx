@@ -73,6 +73,12 @@ export function Login() {
         <button type="submit" className="btn-primary w-full" disabled={busy}>
           {busy ? 'Signing in…' : 'Sign in'}
         </button>
+
+        <p className="text-center text-sm">
+          <Link to="/forgot-password" className="text-ink-500 hover:text-ink-300">
+            Forgot your password?
+          </Link>
+        </p>
       </form>
 
       <OAuthButtons config={config} />

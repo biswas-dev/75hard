@@ -21,6 +21,7 @@ import (
 type Photo struct {
 	ID        int64  `json:"id"`
 	Kind      string `json:"kind"`
+	Pose      string `json:"pose"`
 	DayID     *int64 `json:"day_id"`
 	DayNumber *int   `json:"day_number"`
 	Caption   string `json:"caption"`
@@ -63,6 +64,12 @@ func (s *Server) HandleUploadPhoto(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	pose := strings.TrimSpace(r.FormValue("pose"))
+	if !photo.ValidPose(pose) {
+		respondError(w, http.StatusBadRequest, "unknown pose", "invalid_pose")
+		return
+	}
+
 	// Resolve the day this photo belongs to. Defaults to today on the active
 	// program so the common case needs no parameters at all.
 	var (
@@ -101,10 +108,10 @@ func (s *Server) HandleUploadPhoto(w http.ResponseWriter, r *http.Request) {
 	}
 
 	res, err := s.db.ExecContext(ctx, `
-		INSERT INTO photos (user_id, program_id, day_id, kind, rel_path, thumb_path,
+		INSERT INTO photos (user_id, program_id, day_id, kind, pose, rel_path, thumb_path,
 		                    mime, width, height, bytes, sha256, caption)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-		userID, programID, dayID, kind, saved.RelPath, saved.ThumbPath, saved.Mime,
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		userID, programID, dayID, kind, pose, saved.RelPath, saved.ThumbPath, saved.Mime,
 		saved.Width, saved.Height, saved.Bytes, saved.SHA256, strings.TrimSpace(r.FormValue("caption")))
 	if err != nil {
 		// Don't leave bytes on disk that no row points at.
@@ -187,7 +194,7 @@ func (s *Server) HandleListPhotos(w http.ResponseWriter, r *http.Request) {
 	}
 
 	query := `
-		SELECT p.id, p.kind, p.day_id, d.day_number, p.caption, p.width, p.height,
+		SELECT p.id, p.kind, p.pose, p.day_id, d.day_number, p.caption, p.width, p.height,
 		       p.bytes, p.taken_at
 		FROM photos p
 		LEFT JOIN days d ON d.id = p.day_id
@@ -201,6 +208,14 @@ func (s *Server) HandleListPhotos(w http.ResponseWriter, r *http.Request) {
 		}
 		query += ` AND p.kind = ?`
 		args = append(args, kind)
+	}
+	if pose := r.URL.Query().Get("pose"); pose != "" {
+		if !photo.ValidPose(pose) {
+			respondError(w, http.StatusBadRequest, "unknown pose", "invalid_pose")
+			return
+		}
+		query += ` AND p.pose = ?`
+		args = append(args, pose)
 	}
 	query += ` ORDER BY p.taken_at DESC, p.id DESC LIMIT ?`
 	args = append(args, limit)
@@ -261,7 +276,7 @@ func (s *Server) HandleDeletePhoto(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) photoByID(ctx context.Context, userID, id int64) (Photo, error) {
 	row := s.db.QueryRowContext(ctx, `
-		SELECT p.id, p.kind, p.day_id, d.day_number, p.caption, p.width, p.height,
+		SELECT p.id, p.kind, p.pose, p.day_id, d.day_number, p.caption, p.width, p.height,
 		       p.bytes, p.taken_at
 		FROM photos p
 		LEFT JOIN days d ON d.id = p.day_id
@@ -271,7 +286,7 @@ func (s *Server) photoByID(ctx context.Context, userID, id int64) (Photo, error)
 
 func (s *Server) photosForDay(ctx context.Context, dayID int64) ([]Photo, error) {
 	rows, err := s.db.QueryContext(ctx, `
-		SELECT p.id, p.kind, p.day_id, d.day_number, p.caption, p.width, p.height,
+		SELECT p.id, p.kind, p.pose, p.day_id, d.day_number, p.caption, p.width, p.height,
 		       p.bytes, p.taken_at
 		FROM photos p
 		LEFT JOIN days d ON d.id = p.day_id
@@ -295,7 +310,7 @@ func (s *Server) photosForDay(ctx context.Context, dayID int64) ([]Photo, error)
 
 func scanPhoto(row scanner) (Photo, error) {
 	var p Photo
-	if err := row.Scan(&p.ID, &p.Kind, &p.DayID, &p.DayNumber, &p.Caption,
+	if err := row.Scan(&p.ID, &p.Kind, &p.Pose, &p.DayID, &p.DayNumber, &p.Caption,
 		&p.Width, &p.Height, &p.Bytes, &p.TakenAt); err != nil {
 		return p, err
 	}

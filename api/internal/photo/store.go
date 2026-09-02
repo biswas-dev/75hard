@@ -38,6 +38,31 @@ const (
 	KindIngredients = "ingredients"
 )
 
+// Poses a progress photo can be taken from.
+//
+// Three angles rather than two: the side view shows the changes a front shot
+// flatters away, and it is the one people skip. Empty is allowed — the daily
+// task is satisfied by any photo, and a streak should not depend on
+// remembering to tag one.
+const (
+	PoseFront = "front"
+	PoseSide  = "side"
+	PoseBack  = "back"
+)
+
+// Poses lists the angles offered, in the order they are shown.
+func Poses() []string { return []string{PoseFront, PoseSide, PoseBack} }
+
+// ValidPose reports whether pose is one we store. The empty string is valid
+// and means "untagged".
+func ValidPose(pose string) bool {
+	switch pose {
+	case "", PoseFront, PoseSide, PoseBack:
+		return true
+	}
+	return false
+}
+
 // ValidKind reports whether kind is one we store.
 func ValidKind(kind string) bool {
 	switch kind {
