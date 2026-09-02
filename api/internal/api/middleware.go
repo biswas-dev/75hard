@@ -2,6 +2,7 @@ package api
 
 import (
 	"context"
+	"errors"
 	"net"
 	"net/http"
 	"strings"
@@ -9,6 +10,7 @@ import (
 	"time"
 
 	"github.com/anchoo2kewl/75hard/api/internal/auth"
+	goapi "github.com/anchoo2kewl/go-api"
 	"go.uber.org/zap"
 )
 
@@ -29,6 +31,10 @@ func UserID(ctx context.Context) int64 {
 
 // JWTAuth rejects requests without a valid bearer token and puts the user's
 // identity on the request context.
+//
+// It accepts two kinds of credential. A session JWT from a login, and a
+// personal API token, which is recognised by its prefix. Both arrive as a
+// bearer token because tooling already knows how to send one.
 func (s *Server) JWTAuth(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		header := r.Header.Get("Authorization")
@@ -39,6 +45,26 @@ func (s *Server) JWTAuth(next http.Handler) http.Handler {
 		scheme, credential, ok := strings.Cut(header, " ")
 		if !ok || !strings.EqualFold(scheme, "Bearer") {
 			respondError(w, http.StatusUnauthorized, "invalid authorization header", "unauthorized")
+			return
+		}
+
+		// go-api owns the scheme, the scope rules and the error mapping, so
+		// this and folioworth reject the same things for the same reasons.
+		if TokenScheme.Issued(credential) {
+			userID, record, err := s.tokenAuthenticator().
+				Authenticate(r.Context(), credential, r.Method)
+			if err != nil {
+				code := "unauthorized"
+				if errors.Is(err, goapi.ErrScopeDenied) {
+					code = "token_scope_denied"
+				}
+				respondError(w, goapi.StatusFor(err), goapi.PublicMessage(err), code)
+				return
+			}
+
+			ctx := context.WithValue(r.Context(), UserIDKey, userID)
+			ctx = context.WithValue(ctx, TokenScopeKey, record.Scopes)
+			next.ServeHTTP(w, r.WithContext(ctx))
 			return
 		}
 

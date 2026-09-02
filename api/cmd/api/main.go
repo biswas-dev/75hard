@@ -22,6 +22,7 @@ import (
 
 	"github.com/anchoo2kewl/75hard/api/internal/aifeatures"
 	"github.com/anchoo2kewl/75hard/api/internal/api"
+	"github.com/anchoo2kewl/75hard/api/internal/api/spec"
 	"github.com/anchoo2kewl/75hard/api/internal/auth"
 	"github.com/anchoo2kewl/75hard/api/internal/config"
 	"github.com/anchoo2kewl/75hard/api/internal/db"
@@ -181,6 +182,13 @@ func main() {
 	}
 
 	r.Route("/api", func(r chi.Router) {
+		// The OpenAPI document, served under the go-api convention. Public
+		// on purpose: it describes the shape of the API, not anyone's data,
+		// and requiring a credential to discover how to present a credential
+		// is a loop.
+		r.Method(http.MethodGet, "/openapi.yaml", spec.Document.Handler())
+		r.Method(http.MethodHead, "/openapi.yaml", spec.Document.Handler())
+
 		r.Get("/version", func(w http.ResponseWriter, r *http.Request) {
 			w.Header().Set("Content-Type", "application/json")
 			_ = writeJSON(w, version.Get())
@@ -253,6 +261,12 @@ func main() {
 			// One call for the whole main page: five round trips on a phone is
 			// the difference between the page appearing and assembling itself.
 			r.Get("/summary", server.HandleGetSummary)
+
+			// Personal API tokens. Creating one deliberately requires a real
+			// login, so a read token cannot mint itself a write token.
+			r.Get("/tokens", server.HandleListTokens)
+			r.Post("/tokens", server.HandleCreateToken)
+			r.Delete("/tokens/{tokenID}", server.HandleRevokeToken)
 
 			// Strava. The callback is registered outside this group because
 			// it is a browser redirect carrying a signed state rather than a

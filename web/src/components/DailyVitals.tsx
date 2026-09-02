@@ -1,5 +1,7 @@
 import { useEffect, useState } from 'react'
 import { api } from '../lib/api'
+import { roundWeight, toDisplay, toKg, unitFor, weightBounds } from '../lib/units'
+import { useAuth } from '../state/AuthContext'
 import type { Day } from '../lib/types'
 
 interface Props {
@@ -20,6 +22,10 @@ interface Props {
  * lives in Garmin, Fitbit or Apple Health.
  */
 export function DailyVitals({ programId, day, onSaved }: Props) {
+  const { user } = useAuth()
+  const unit = unitFor(user)
+  const bounds = weightBounds(unit)
+
   const [weight, setWeight] = useState('')
   const [hr, setHr] = useState('')
   const [busy, setBusy] = useState(false)
@@ -28,16 +34,19 @@ export function DailyVitals({ programId, day, onSaved }: Props) {
 
   // Re-seed when the day changes, so moving between days does not carry
   // yesterday's reading into today's empty field.
+  // The stored kilograms, rendered in the reader's unit.
+  const storedWeight =
+    day.weight_kg != null ? String(roundWeight(toDisplay(day.weight_kg, unit), unit)) : ''
+
   useEffect(() => {
-    setWeight(day.weight_kg != null ? String(day.weight_kg) : '')
+    setWeight(storedWeight)
     setHr(day.resting_hr != null ? String(day.resting_hr) : '')
     setSaved(false)
     setError('')
-  }, [day.id, day.weight_kg, day.resting_hr])
+  }, [day.id, storedWeight, day.resting_hr])
 
   const dirty =
-    weight !== (day.weight_kg != null ? String(day.weight_kg) : '') ||
-    hr !== (day.resting_hr != null ? String(day.resting_hr) : '')
+    weight !== storedWeight || hr !== (day.resting_hr != null ? String(day.resting_hr) : '')
 
   async function save() {
     if (busy) return
@@ -46,8 +55,9 @@ export function DailyVitals({ programId, day, onSaved }: Props) {
 
     try {
       const body: { weight_kg?: number; resting_hr?: number } = {}
+      // Always sent in kilograms; the unit is only what the person typed in.
       // Zero clears the stored value rather than recording a 0kg weigh-in.
-      if (weight.trim() !== '') body.weight_kg = Number(weight)
+      if (weight.trim() !== '') body.weight_kg = toKg(Number(weight), unit)
       else if (day.weight_kg != null) body.weight_kg = 0
 
       if (hr.trim() !== '') body.resting_hr = Number(hr)
@@ -73,13 +83,13 @@ export function DailyVitals({ programId, day, onSaved }: Props) {
 
       <div className="grid grid-cols-2 gap-3">
         <label className="block">
-          <span className="mb-1 block text-xs text-ink-500">Weight (kg)</span>
+          <span className="mb-1 block text-xs text-ink-500">Weight ({unit})</span>
           <input
             type="number"
             inputMode="decimal"
-            step="0.1"
-            min="20"
-            max="400"
+            step={bounds.step}
+            min={bounds.min}
+            max={bounds.max}
             value={weight}
             onChange={(e) => setWeight(e.target.value)}
             placeholder="—"

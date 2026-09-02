@@ -1,4 +1,6 @@
 import { TrendChart } from './TrendChart'
+import { roundWeight, toDisplay, unitFor } from '../lib/units'
+import { useAuth } from '../state/AuthContext'
 import type { Summary, Trend } from '../lib/types'
 
 /**
@@ -9,9 +11,14 @@ import type { Summary, Trend } from '../lib/types'
  * trend.
  */
 export function SummaryPanel({ summary }: { summary: Summary }) {
+  const { user } = useAuth()
+  const unit = unitFor(user)
+
+  // The series arrives in kilograms; convert once, here, so the chart, the
+  // delta and the summary line all agree.
   const weightPoints = summary.vitals
     .filter((v) => v.weight_kg != null)
-    .map((v) => ({ x: v.day_number, y: v.weight_kg as number }))
+    .map((v) => ({ x: v.day_number, y: toDisplay(v.weight_kg as number, unit) }))
   const hrPoints = summary.vitals
     .filter((v) => v.resting_hr != null)
     .map((v) => ({ x: v.day_number, y: v.resting_hr as number }))
@@ -72,8 +79,8 @@ export function SummaryPanel({ summary }: { summary: Summary }) {
 
           {weightPoints.length > 0 && (
             <div>
-              <TrendChart points={weightPoints} color="#ff6b35" unit="kg" label="Weight" />
-              <TrendSummary trend={summary.weight} unit="kg" />
+              <TrendChart points={weightPoints} color="#ff6b35" unit={unit} label="Weight" />
+              <TrendSummary trend={summary.weight} unit={unit} convert />
             </div>
           )}
 
@@ -104,11 +111,31 @@ export function SummaryPanel({ summary }: { summary: Summary }) {
   )
 }
 
-function TrendSummary({ trend, unit }: { trend: Trend; unit: string }) {
+/**
+ * `convert` marks a trend whose numbers are kilograms and must be shown in the
+ * reader's unit. Resting pulse is already in its own unit and passes through.
+ */
+function TrendSummary({
+  trend,
+  unit,
+  convert,
+}: {
+  trend: Trend
+  unit: string
+  convert?: boolean
+}) {
   if (trend.count < 2) return null
+
+  const show = (value?: number) => {
+    if (value == null) return '—'
+    return convert
+      ? roundWeight(toDisplay(value, unit as 'kg' | 'lb'), unit as 'kg' | 'lb')
+      : value
+  }
+
   return (
     <p className="mt-1 font-mono text-xs text-ink-600">
-      best {trend.best} {unit} · average {trend.average} {unit} · {trend.count} readings
+      best {show(trend.best)} {unit} · average {show(trend.average)} {unit} · {trend.count} readings
     </p>
   )
 }

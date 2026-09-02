@@ -1,7 +1,9 @@
 import type {
   AIStatus,
+  APIToken,
   AuthConfig,
   CoachNote,
+  CreatedToken,
   FoodEstimate,
   AuthResponse,
   Day,
@@ -111,7 +113,7 @@ class ApiClient {
     return this.request<User>('/api/me')
   }
 
-  updateProfile(body: { name?: string; timezone?: string }) {
+  updateProfile(body: { name?: string; timezone?: string; weight_unit?: 'kg' | 'lb' }) {
     return this.request<User>('/api/me', { method: 'PATCH', body: JSON.stringify(body) })
   }
 
@@ -356,6 +358,21 @@ class ApiClient {
   /** Everything the main page renders, in one call. */
   getSummary() {
     return this.request<Summary>('/api/summary')
+  }
+
+  listTokens() {
+    return this.request<APIToken[]>('/api/tokens')
+  }
+
+  createToken(body: { name: string; scopes: string[]; expires_in_days?: number }) {
+    return this.request<CreatedToken>('/api/tokens', {
+      method: 'POST',
+      body: JSON.stringify(body),
+    })
+  }
+
+  revokeToken(id: number) {
+    return this.request<{ ok: boolean }>(`/api/tokens/${id}`, { method: 'DELETE' })
   }
 
   stravaStatus() {

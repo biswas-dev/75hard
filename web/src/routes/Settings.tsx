@@ -1,8 +1,11 @@
 import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
+import { ApiTokensCard } from '../components/ApiTokensCard'
 import { StravaCard } from '../components/StravaCard'
 import { api } from '../lib/api'
+import { unitFor } from '../lib/units'
 import type { Program } from '../lib/types'
+import type { WeightUnit } from '../lib/units'
 import { useAuth } from '../state/AuthContext'
 
 export function Settings() {
@@ -11,6 +14,7 @@ export function Settings() {
 
   const [name, setName] = useState(user?.name ?? '')
   const [timezone, setTimezone] = useState(user?.timezone ?? 'UTC')
+  const [weightUnit, setWeightUnit] = useState<WeightUnit>(unitFor(user))
   const [profileMsg, setProfileMsg] = useState('')
   const [currentPassword, setCurrentPassword] = useState('')
   const [newPassword, setNewPassword] = useState('')
@@ -28,7 +32,7 @@ export function Settings() {
   async function saveProfile() {
     setError('')
     try {
-      await api.updateProfile({ name, timezone })
+      await api.updateProfile({ name, timezone, weight_unit: weightUnit })
       await refresh()
       setProfileMsg('Saved')
       window.setTimeout(() => setProfileMsg(''), 2500)
@@ -94,6 +98,29 @@ export function Settings() {
           </select>
           <p className="mt-1.5 text-xs text-ink-600">
             Days roll over at midnight in this zone.
+          </p>
+        </div>
+        <div>
+          <span className="label">Weight unit</span>
+          <div className="grid grid-cols-2 gap-2">
+            {(['kg', 'lb'] as WeightUnit[]).map((u) => (
+              <button
+                key={u}
+                type="button"
+                onClick={() => setWeightUnit(u)}
+                className={`rounded-xl border py-2 text-sm uppercase transition ${
+                  weightUnit === u
+                    ? 'border-flame-500 bg-flame-500/15 text-flame-400'
+                    : 'border-ink-800 bg-ink-850 text-ink-400'
+                }`}
+              >
+                {u}
+              </button>
+            ))}
+          </div>
+          <p className="mt-1.5 text-xs text-ink-600">
+            Display only — your existing weigh-ins are converted, not rewritten, so switching
+            back and forth changes nothing.
           </p>
         </div>
         <button className="btn-primary w-full" onClick={saveProfile}>
@@ -177,6 +204,8 @@ export function Settings() {
       )}
 
       <StravaCard />
+
+      <ApiTokensCard />
 
       {programs.length > 1 && (
         <section className="card p-4">

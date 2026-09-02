@@ -21,7 +21,11 @@ type User struct {
 	Timezone     string `json:"timezone"`
 	IsAdmin      bool   `json:"is_admin"`
 	AuthProvider string `json:"auth_provider"`
-	CreatedAt    string `json:"created_at"`
+	// WeightUnit is a display preference only: weight is always stored in
+	// kilograms, so every chart, average and comparison works on one scale
+	// regardless of what any given person prefers to read.
+	WeightUnit string `json:"weight_unit"`
+	CreatedAt  string `json:"created_at"`
 }
 
 type authResponse struct {
@@ -156,8 +160,9 @@ func (s *Server) HandleMe(w http.ResponseWriter, r *http.Request) {
 }
 
 type updateProfileRequest struct {
-	Name     *string `json:"name"`
-	Timezone *string `json:"timezone"`
+	Name       *string `json:"name"`
+	Timezone   *string `json:"timezone"`
+	WeightUnit *string `json:"weight_unit"`
 }
 
 // HandleUpdateProfile updates the display name and timezone.
@@ -187,6 +192,20 @@ func (s *Server) HandleUpdateProfile(w http.ResponseWriter, r *http.Request) {
 		if _, err := s.db.ExecContext(r.Context(),
 			`UPDATE users SET timezone = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?`,
 			tz, userID); err != nil {
+			respondError(w, http.StatusInternalServerError, "could not update profile", "internal")
+			return
+		}
+	}
+
+	if req.WeightUnit != nil {
+		unit := strings.ToLower(strings.TrimSpace(*req.WeightUnit))
+		if unit != "kg" && unit != "lb" {
+			respondError(w, http.StatusBadRequest, "weight unit must be kg or lb", "invalid_unit")
+			return
+		}
+		if _, err := s.db.ExecContext(r.Context(),
+			`UPDATE users SET weight_unit = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?`,
+			unit, userID); err != nil {
 			respondError(w, http.StatusInternalServerError, "could not update profile", "internal")
 			return
 		}
@@ -255,9 +274,10 @@ func (s *Server) issueToken(w http.ResponseWriter, user User) {
 func (s *Server) getUser(r *http.Request, id int64) (User, error) {
 	var u User
 	err := s.db.QueryRowContext(r.Context(),
-		`SELECT id, email, name, avatar_url, timezone, is_admin, auth_provider, created_at
+		`SELECT id, email, name, avatar_url, timezone, is_admin, auth_provider, weight_unit, created_at
 		 FROM users WHERE id = ? AND deleted_at IS NULL`, id).
-		Scan(&u.ID, &u.Email, &u.Name, &u.AvatarURL, &u.Timezone, &u.IsAdmin, &u.AuthProvider, &u.CreatedAt)
+		Scan(&u.ID, &u.Email, &u.Name, &u.AvatarURL, &u.Timezone, &u.IsAdmin, &u.AuthProvider,
+			&u.WeightUnit, &u.CreatedAt)
 	return u, err
 }
 

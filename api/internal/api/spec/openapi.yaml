@@ -1,0 +1,908 @@
+openapi: 3.1.0
+info:
+  title: 75hard API
+  version: "1.0.0"
+  description: |
+    Tracking API for the 75 Hard challenge: daily tasks, progress photos,
+    meals and calories, workouts, meditation, Strava imports and body metrics.
+
+    ## Authentication
+
+    Every endpoint under `/api` except the auth and discovery routes needs a
+    bearer token. Two kinds are accepted:
+
+    - a **session JWT** from `POST /api/auth/login`
+    - a **personal API token**, created in Settings, which looks like
+      `75h_` followed by 64 hex characters
+
+    Personal tokens carry scopes. A `read` token may only issue GET, HEAD and
+    OPTIONS requests; anything that changes data needs `write`. A read-only
+    token attempting a write gets 403, not 401 — the credential is valid, it
+    simply is not permitted.
+
+    ## Units
+
+    Weight is always kilograms on the wire, regardless of the display
+    preference on the account. Distances are metres, durations are seconds
+    unless a field says minutes, and energy is kilocalories.
+
+    ## Dates
+
+    A day is the user's local calendar date, formatted `YYYY-MM-DD`. Day 1 of a
+    program is its start date.
+servers:
+  - url: https://75hard.biswas.me
+    description: Production
+
+security:
+  - bearerAuth: []
+
+tags:
+  - name: Auth
+  - name: Programs
+  - name: Days
+  - name: Nutrition
+  - name: Workouts
+  - name: Meditation
+  - name: Photos
+  - name: Strava
+  - name: Insights
+  - name: Tokens
+
+paths:
+  /api/health:
+    get:
+      tags: [Auth]
+      summary: Liveness probe
+      security: []
+      responses:
+        "200":
+          description: The service is up
+  /api/version:
+    get:
+      tags: [Auth]
+      summary: Build information
+      security: []
+      responses:
+        "200":
+          description: Version, commit and build time
+
+  /api/auth/signup:
+    post:
+      tags: [Auth]
+      summary: Create an account
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email, password]
+              properties:
+                email: { type: string, format: email }
+                password: { type: string, minLength: 12 }
+                name: { type: string }
+      responses:
+        "201": { description: Account created, returns a token and the user }
+  /api/auth/login:
+    post:
+      tags: [Auth]
+      summary: Sign in
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email, password]
+              properties:
+                email: { type: string, format: email }
+                password: { type: string }
+      responses:
+        "200":
+          description: A session token and the user
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  token: { type: string }
+                  user: { $ref: "#/components/schemas/User" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+
+  /api/me:
+    get:
+      tags: [Auth]
+      summary: The signed-in account
+      responses:
+        "200":
+          description: The account
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/User" }
+    patch:
+      tags: [Auth]
+      summary: Update profile
+      description: |
+        `weight_unit` is a display preference only — weights are still sent and
+        received in kilograms.
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name: { type: string }
+                timezone: { type: string, description: IANA name, e.g. America/Toronto }
+                weight_unit: { type: string, enum: [kg, lb] }
+      responses:
+        "200":
+          description: The updated account
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/User" }
+
+  /api/programs:
+    get:
+      tags: [Programs]
+      summary: List attempts
+      responses:
+        "200":
+          description: Every program, newest first
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/Program" }
+    post:
+      tags: [Programs]
+      summary: Start a program
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                start_date: { type: string, format: date }
+                length_days: { type: integer, default: 75 }
+                daily_kcal_target: { type: integer, nullable: true }
+      responses:
+        "201":
+          description: The new program
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Program" }
+        "409": { description: An active program already exists }
+  /api/programs/active:
+    get:
+      tags: [Programs]
+      summary: The current attempt
+      responses:
+        "200":
+          description: The active program
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Program" }
+        "404": { description: No active program }
+
+  /api/today:
+    get:
+      tags: [Days]
+      summary: Today on the active program
+      description: |
+        The main call. Returns the day, every task with its completion state,
+        and the meals, workouts, meditation sessions and photos logged against
+        it.
+      responses:
+        "200":
+          description: Today
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Day" }
+  /api/programs/{programID}/days:
+    get:
+      tags: [Days]
+      summary: Every day, for the calendar
+      parameters: [{ $ref: "#/components/parameters/ProgramID" }]
+      responses:
+        "200":
+          description: One summary per day
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/DaySummary" }
+  /api/programs/{programID}/days/{dayNumber}:
+    get:
+      tags: [Days]
+      summary: One day in full
+      parameters:
+        - { $ref: "#/components/parameters/ProgramID" }
+        - { $ref: "#/components/parameters/DayNumber" }
+      responses:
+        "200":
+          description: The day
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Day" }
+    patch:
+      tags: [Days]
+      summary: Save the note, weight or resting pulse
+      description: |
+        Weight is kilograms. Sending 0 for either number clears it rather than
+        recording a zero reading.
+      parameters:
+        - { $ref: "#/components/parameters/ProgramID" }
+        - { $ref: "#/components/parameters/DayNumber" }
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                note: { type: string }
+                weight_kg: { type: number, format: float }
+                resting_hr: { type: integer, minimum: 25, maximum: 200 }
+      responses:
+        "200":
+          description: The updated day
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Day" }
+  /api/programs/{programID}/days/{dayNumber}/tasks/{taskID}:
+    post:
+      tags: [Days]
+      summary: Tick a task, or record its value
+      description: |
+        `done` drives check, photo and text tasks. `value` drives number and
+        duration tasks, which complete once the value reaches the target.
+      parameters:
+        - { $ref: "#/components/parameters/ProgramID" }
+        - { $ref: "#/components/parameters/DayNumber" }
+        - name: taskID
+          in: path
+          required: true
+          schema: { type: integer, format: int64 }
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                done: { type: boolean }
+                value: { type: number }
+                note: { type: string }
+      responses:
+        "200":
+          description: The updated day
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Day" }
+  /api/programs/{programID}/grid:
+    get:
+      tags: [Days]
+      summary: A cell per activity per day
+      parameters: [{ $ref: "#/components/parameters/ProgramID" }]
+      responses:
+        "200": { description: One row per task, one cell per day }
+
+  /api/meals:
+    post:
+      tags: [Nutrition]
+      summary: Log a meal
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                day_number: { type: integer }
+                name: { type: string }
+                slot: { type: string, enum: [breakfast, lunch, dinner, snack] }
+                kcal: { type: number }
+                protein_g: { type: number }
+                carbs_g: { type: number }
+                fat_g: { type: number }
+                photo_id: { type: integer, format: int64, nullable: true }
+      responses:
+        "201":
+          description: The meal
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Meal" }
+  /api/meals/{mealID}:
+    patch:
+      tags: [Nutrition]
+      summary: Edit a meal
+      parameters: [{ $ref: "#/components/parameters/MealID" }]
+      responses:
+        "200":
+          description: The updated meal
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Meal" }
+    delete:
+      tags: [Nutrition]
+      summary: Remove a meal
+      parameters: [{ $ref: "#/components/parameters/MealID" }]
+      responses:
+        "200": { description: Removed }
+  /api/meals/{mealID}/estimate:
+    post:
+      tags: [Nutrition]
+      summary: Re-run a failed photo estimate
+      description: |
+        Food photos uploaded with `autolog=1` are estimated in the background.
+        This retries one whose `estimate_status` is `failed` — usually because
+        the daily AI limit was reached, which clears on its own.
+      parameters: [{ $ref: "#/components/parameters/MealID" }]
+      responses:
+        "202": { description: Queued }
+
+  /api/workouts:
+    post:
+      tags: [Workouts]
+      summary: Log a session
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                day_number: { type: integer }
+                kind: { type: string, enum: [indoor, outdoor] }
+                activity: { type: string }
+                minutes: { type: integer }
+                kcal: { type: number, nullable: true }
+                task_id:
+                  type: integer
+                  format: int64
+                  description: Also credits this task with the total minutes logged
+      responses:
+        "201":
+          description: The workout
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Workout" }
+  /api/workouts/{workoutID}:
+    delete:
+      tags: [Workouts]
+      summary: Remove a session
+      parameters:
+        - name: workoutID
+          in: path
+          required: true
+          schema: { type: integer, format: int64 }
+      responses:
+        "200": { description: Removed }
+
+  /api/meditations:
+    post:
+      tags: [Meditation]
+      summary: Log a sitting
+      description: |
+        Meditation is optional and is not one of the six rules — missing it
+        never fails a run.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                day_number: { type: integer }
+                minutes: { type: integer, minimum: 0, maximum: 1440 }
+                source: { type: string, description: "Calm, Headspace, Muse, or anything else" }
+                style: { type: string, enum: [guided, unguided, breathwork, body_scan, walking, other] }
+                task_id: { type: integer, format: int64 }
+      responses:
+        "201":
+          description: The session
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Meditation" }
+  /api/meditations/{meditationID}:
+    delete:
+      tags: [Meditation]
+      summary: Remove a sitting
+      parameters:
+        - name: meditationID
+          in: path
+          required: true
+          schema: { type: integer, format: int64 }
+      responses:
+        "200": { description: Removed }
+
+  /api/photos:
+    get:
+      tags: [Photos]
+      summary: List photos
+      parameters:
+        - name: kind
+          in: query
+          schema: { type: string, enum: [progress, food, ingredients] }
+      responses:
+        "200":
+          description: Photos, newest first
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/Photo" }
+    post:
+      tags: [Photos]
+      summary: Upload a photo
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [file]
+              properties:
+                file: { type: string, format: binary }
+                kind: { type: string, enum: [progress, food, ingredients], default: progress }
+                pose: { type: string, enum: ["", front, side, back] }
+                day_number: { type: integer }
+                caption: { type: string }
+                slot:
+                  type: string
+                  enum: [breakfast, lunch, dinner, snack]
+                  description: Food photos only; inferred from the clock when absent
+                autolog:
+                  type: string
+                  description: |
+                    Food photos only. Set to 1 to create the meal immediately
+                    and estimate its calories in the background.
+      responses:
+        "201":
+          description: The stored photo
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Photo" }
+  /api/photos/{photoID}/file:
+    get:
+      tags: [Photos]
+      summary: Download the image
+      parameters:
+        - { $ref: "#/components/parameters/PhotoID" }
+        - name: size
+          in: query
+          schema: { type: string, enum: [thumb] }
+      responses:
+        "200":
+          description: The image bytes
+          content:
+            image/*: { schema: { type: string, format: binary } }
+  /api/programs/{programID}/roll:
+    get:
+      tags: [Photos]
+      summary: The progress camera roll
+      parameters: [{ $ref: "#/components/parameters/ProgramID" }]
+      responses:
+        "200": { description: Photos grouped by day, with first and latest per pose }
+
+  /api/strava/status:
+    get:
+      tags: [Strava]
+      summary: Connection state
+      responses:
+        "200":
+          description: Whether Strava is configured and connected
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/StravaStatus" }
+  /api/strava/sync:
+    post:
+      tags: [Strava]
+      summary: Import recent activities
+      description: |
+        Pulls the last 30 days. Each activity becomes a workout and credits the
+        matching task. Outdoor or indoor is decided from the sport type and
+        Strava's trainer flag.
+      responses:
+        "200":
+          description: How many activities were imported or updated
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  imported: { type: integer }
+  /api/strava:
+    delete:
+      tags: [Strava]
+      summary: Disconnect
+      description: Workouts already created are kept.
+      responses:
+        "200": { description: Disconnected }
+
+  /api/summary:
+    get:
+      tags: [Insights]
+      summary: Everything the main page shows
+      description: |
+        Streak, volume, and the weight, resting-pulse and training-heart-rate
+        trends in one call.
+      responses:
+        "200":
+          description: The summary
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Summary" }
+  /api/stats:
+    get:
+      tags: [Insights]
+      summary: Completion statistics
+      responses:
+        "200": { description: Per-task completion rates and the weight series }
+  /api/ai/coach:
+    get:
+      tags: [Insights]
+      summary: A short daily note
+      responses:
+        "200": { description: The note }
+        "503": { description: No AI provider is configured }
+
+  /api/tokens:
+    get:
+      tags: [Tokens]
+      summary: List personal API tokens
+      responses:
+        "200":
+          description: Tokens, secrets excluded
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/APIToken" }
+    post:
+      tags: [Tokens]
+      summary: Create a personal API token
+      description: |
+        Requires a session login: an API token cannot issue another, or a read
+        token could quietly escalate itself into a write one.
+
+        The plaintext secret is returned **once** and cannot be recovered.
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name: { type: string }
+                scopes:
+                  type: array
+                  items: { type: string, enum: [read, write] }
+                  default: [read]
+                expires_in_days: { type: integer, description: 0 never expires }
+      responses:
+        "201":
+          description: The token, its secret, and how to use it
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  token: { $ref: "#/components/schemas/APIToken" }
+                  secret:
+                    type: string
+                    description: Shown once. Store it now.
+                  discovery:
+                    type: object
+                    properties:
+                      base_url: { type: string }
+                      spec_url: { type: string }
+                      auth_scheme: { type: string }
+                      example: { type: string }
+                      scopes: { type: array, items: { type: string } }
+        "403": { description: Called with an API token rather than a login }
+  /api/tokens/{tokenID}:
+    delete:
+      tags: [Tokens]
+      summary: Revoke a token
+      parameters:
+        - name: tokenID
+          in: path
+          required: true
+          schema: { type: integer, format: int64 }
+      responses:
+        "200": { description: Revoked }
+        "404": { description: No such token }
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      description: |
+        A session JWT, or a personal API token of the form
+        `75h_` + 64 hex characters.
+
+  parameters:
+    ProgramID:
+      name: programID
+      in: path
+      required: true
+      schema: { type: integer, format: int64 }
+    DayNumber:
+      name: dayNumber
+      in: path
+      required: true
+      schema: { type: integer, minimum: 1 }
+      description: 1 is the program's start date
+    MealID:
+      name: mealID
+      in: path
+      required: true
+      schema: { type: integer, format: int64 }
+    PhotoID:
+      name: photoID
+      in: path
+      required: true
+      schema: { type: integer, format: int64 }
+
+  responses:
+    Unauthorized:
+      description: Missing, invalid or expired credentials
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+    Forbidden:
+      description: Valid credentials without the required scope
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+
+  schemas:
+    Error:
+      type: object
+      properties:
+        error: { type: string }
+        code: { type: string }
+
+    User:
+      type: object
+      properties:
+        id: { type: integer, format: int64 }
+        email: { type: string, format: email }
+        name: { type: string }
+        timezone: { type: string }
+        weight_unit:
+          type: string
+          enum: [kg, lb]
+          description: Display preference only; the API always uses kilograms
+        is_admin: { type: boolean }
+        created_at: { type: string, format: date-time }
+
+    Program:
+      type: object
+      properties:
+        id: { type: integer, format: int64 }
+        start_date: { type: string, format: date }
+        length_days: { type: integer }
+        status: { type: string, enum: [active, completed, failed, abandoned] }
+        attempt_number: { type: integer }
+        daily_kcal_target: { type: integer, nullable: true }
+        current_day: { type: integer }
+        days_complete: { type: integer }
+        streak: { type: integer }
+        tasks:
+          type: array
+          items: { $ref: "#/components/schemas/ProgramTask" }
+
+    ProgramTask:
+      type: object
+      properties:
+        id: { type: integer, format: int64 }
+        key: { type: string }
+        title: { type: string }
+        kind: { type: string, enum: [check, number, duration, photo, text] }
+        target_num: { type: number, nullable: true }
+        unit: { type: string }
+        required:
+          type: boolean
+          description: Optional tasks never hold a day back
+        color: { type: string }
+        tracker: { type: string, enum: ["", nutrition, workout, meditation] }
+
+    Entry:
+      type: object
+      properties:
+        task_id: { type: integer, format: int64 }
+        key: { type: string }
+        title: { type: string }
+        kind: { type: string }
+        target_num: { type: number, nullable: true }
+        value: { type: number, nullable: true }
+        done: { type: boolean }
+        required: { type: boolean }
+        tracker: { type: string }
+
+    Day:
+      type: object
+      properties:
+        id: { type: integer, format: int64 }
+        day_number: { type: integer }
+        date: { type: string, format: date }
+        status: { type: string, enum: [pending, complete, missed] }
+        note: { type: string }
+        weight_kg: { type: number, nullable: true }
+        resting_hr: { type: integer, nullable: true }
+        tasks_done:
+          type: integer
+          description: Required tasks completed; optional tasks are excluded
+        tasks_total: { type: integer, description: Required tasks only }
+        entries: { type: array, items: { $ref: "#/components/schemas/Entry" } }
+        photos: { type: array, items: { $ref: "#/components/schemas/Photo" } }
+        meals: { type: array, items: { $ref: "#/components/schemas/Meal" } }
+        workouts: { type: array, items: { $ref: "#/components/schemas/Workout" } }
+        meditations: { type: array, items: { $ref: "#/components/schemas/Meditation" } }
+        totals: { $ref: "#/components/schemas/Totals" }
+
+    DaySummary:
+      type: object
+      properties:
+        day_number: { type: integer }
+        date: { type: string, format: date }
+        status: { type: string, enum: [pending, complete, missed] }
+        tasks_done: { type: integer }
+        tasks_total: { type: integer }
+        photo_count: { type: integer }
+
+    Totals:
+      type: object
+      properties:
+        kcal: { type: number }
+        protein_g: { type: number }
+        carbs_g: { type: number }
+        fat_g: { type: number }
+        kcal_target: { type: integer, nullable: true }
+        workout_minutes: { type: integer }
+        outdoor_minutes: { type: integer }
+        meditation_minutes: { type: integer }
+
+    Meal:
+      type: object
+      properties:
+        id: { type: integer, format: int64 }
+        name: { type: string }
+        slot: { type: string, enum: [breakfast, lunch, dinner, snack] }
+        kcal: { type: number }
+        protein_g: { type: number }
+        carbs_g: { type: number }
+        fat_g: { type: number }
+        source: { type: string, enum: [manual, ai] }
+        photo_id: { type: integer, format: int64, nullable: true }
+        estimate_status:
+          type: string
+          enum: ["", pending, done, failed]
+          description: |
+            Empty for a hand-entered meal. While `pending`, the calorie figures
+            are not yet real — do not read a zero as a measurement.
+        estimate_error: { type: string }
+        items:
+          type: array
+          items:
+            type: object
+            properties:
+              name: { type: string }
+              qty: { type: number }
+              unit: { type: string }
+              kcal: { type: number }
+              confidence: { type: number, nullable: true }
+
+    Workout:
+      type: object
+      properties:
+        id: { type: integer, format: int64 }
+        kind: { type: string, enum: [indoor, outdoor] }
+        activity: { type: string }
+        minutes: { type: integer }
+        kcal: { type: number, nullable: true }
+        notes: { type: string }
+
+    Meditation:
+      type: object
+      properties:
+        id: { type: integer, format: int64 }
+        minutes: { type: integer }
+        source: { type: string }
+        style: { type: string }
+        notes: { type: string }
+
+    Photo:
+      type: object
+      properties:
+        id: { type: integer, format: int64 }
+        kind: { type: string, enum: [progress, food, ingredients] }
+        pose: { type: string, enum: ["", front, side, back] }
+        day_number: { type: integer, nullable: true }
+        caption: { type: string }
+        taken_at: { type: string, format: date-time }
+        url: { type: string }
+        thumb_url: { type: string }
+
+    StravaStatus:
+      type: object
+      properties:
+        configured: { type: boolean, description: Whether the server has a Strava app }
+        connected: { type: boolean }
+        athlete: { type: string }
+        activities: { type: integer }
+        last_sync_at: { type: string, format: date-time }
+        last_error: { type: string }
+
+    Trend:
+      type: object
+      description: |
+        A measurement's arc. Every field is absent until something is logged.
+        `change` is latest minus first; negative is an improvement for all
+        three measurements here, and `best` is the lowest reading.
+      properties:
+        first: { type: number }
+        latest: { type: number }
+        change: { type: number }
+        best: { type: number }
+        average: { type: number }
+        count: { type: integer }
+
+    Summary:
+      type: object
+      properties:
+        current_day: { type: integer }
+        length_days: { type: integer }
+        days_complete: { type: integer }
+        days_missed: { type: integer }
+        streak: { type: integer }
+        best_streak: { type: integer }
+        percent_done: { type: number }
+        total_workouts: { type: integer }
+        total_minutes: { type: integer }
+        outdoor_minutes: { type: integer }
+        meditation_minutes: { type: integer }
+        total_photos: { type: integer }
+        avg_kcal: { type: number }
+        vitals:
+          type: array
+          items:
+            type: object
+            properties:
+              day_number: { type: integer }
+              date: { type: string, format: date }
+              weight_kg: { type: number }
+              resting_hr: { type: integer }
+        weight: { $ref: "#/components/schemas/Trend" }
+        resting_hr: { $ref: "#/components/schemas/Trend" }
+        activity_hr:
+          allOf:
+            - $ref: "#/components/schemas/Trend"
+          description: Average training heart rate, from Strava
+        heart_rate:
+          type: array
+          items:
+            type: object
+            properties:
+              day_number: { type: integer }
+              date: { type: string, format: date }
+              average_hr: { type: number }
+              max_hr: { type: number }
+              minutes: { type: integer }
+
+    APIToken:
+      type: object
+      properties:
+        id: { type: integer, format: int64 }
+        name: { type: string }
+        prefix:
+          type: string
+          description: The non-secret leading portion, for identifying a token
+        scopes: { type: array, items: { type: string, enum: [read, write] } }
+        last_used_at: { type: string, format: date-time }
+        expires_at: { type: string, format: date-time }
+        created_at: { type: string, format: date-time }

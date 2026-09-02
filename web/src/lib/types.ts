@@ -9,6 +9,8 @@ export interface User {
   timezone: string
   is_admin: boolean
   auth_provider: string
+  /** Display preference only — the API always uses kilograms. */
+  weight_unit: 'kg' | 'lb'
   created_at: string
 }
 
@@ -409,4 +411,33 @@ export interface StravaStatus {
   last_sync_at?: string
   last_error?: string
   activities: number
+}
+
+// ---- personal API tokens ----
+
+export interface APIToken {
+  id: number
+  name: string
+  /** The non-secret leading portion, for identifying a token in a list. */
+  prefix: string
+  scopes: ('read' | 'write')[]
+  last_used_at?: string
+  expires_at?: string
+  created_at: string
+}
+
+/** What a caller needs to start using the API, returned with a new token. */
+export interface TokenDiscovery {
+  base_url: string
+  spec_url: string
+  auth_scheme: string
+  example: string
+  scopes: string[]
+}
+
+export interface CreatedToken {
+  token: APIToken
+  /** Shown once and unrecoverable. */
+  secret: string
+  discovery: TokenDiscovery
 }
