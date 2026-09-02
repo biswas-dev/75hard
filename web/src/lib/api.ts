@@ -8,6 +8,7 @@ import type {
   DaySummary,
   Grid,
   Meal,
+  Meditation,
   Photo,
   Plan,
   Pose,
@@ -218,13 +219,24 @@ class ApiClient {
 
   uploadPhoto(
     file: Blob,
-    opts: { kind?: string; dayNumber?: number; caption?: string; pose?: Pose } = {},
+    opts: {
+      kind?: string
+      dayNumber?: number
+      caption?: string
+      pose?: Pose
+      slot?: string
+      /** Food photos only: create the meal and estimate it in the background. */
+      autolog?: boolean
+    } = {},
   ) {
     const form = new FormData()
     form.append('file', file, 'photo.webp')
     if (opts.kind) form.append('kind', opts.kind)
     if (opts.dayNumber) form.append('day_number', String(opts.dayNumber))
     if (opts.caption) form.append('caption', opts.caption)
+    // Only for food shots; omitted so the server infers it from the clock.
+    if (opts.slot) form.append('slot', opts.slot)
+    if (opts.autolog) form.append('autolog', '1')
     if (opts.pose) form.append('pose', opts.pose)
     return this.request<Photo>('/api/photos', { method: 'POST', body: form })
   }
@@ -322,6 +334,22 @@ class ApiClient {
 
   deleteWorkout(id: number) {
     return this.request<{ ok: boolean }>(`/api/workouts/${id}`, { method: 'DELETE' })
+  }
+
+  createMeditation(body: Record<string, unknown>) {
+    return this.request<Meditation>('/api/meditations', {
+      method: 'POST',
+      body: JSON.stringify(body),
+    })
+  }
+
+  deleteMeditation(id: number) {
+    return this.request<{ ok: boolean }>(`/api/meditations/${id}`, { method: 'DELETE' })
+  }
+
+  /** Re-runs a background food estimate that failed, usually on quota. */
+  retryEstimate(mealId: number) {
+    return this.request<{ status: string }>(`/api/meals/${mealId}/estimate`, { method: 'POST' })
   }
 }
 

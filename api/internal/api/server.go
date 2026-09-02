@@ -17,6 +17,9 @@ type Server struct {
 	log    *zap.Logger
 	photos *photo.Store
 	ai     *aifeatures.Service
+	// food, when set, estimates food photos off the request path. Nil is a
+	// valid state: without it a food photo is simply saved without numbers.
+	food *FoodEstimator
 }
 
 // NewServer builds a Server.
@@ -24,3 +27,7 @@ func NewServer(database *db.DB, cfg *config.Config, log *zap.Logger, photos *pho
 	SetLogger(log)
 	return &Server{db: database, cfg: cfg, log: log, photos: photos, ai: aiSvc}
 }
+
+// SetFoodEstimator attaches the background estimator. Separate from NewServer
+// because the estimator needs the server it runs against.
+func (s *Server) SetFoodEstimator(e *FoodEstimator) { s.food = e }

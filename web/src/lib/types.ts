@@ -37,7 +37,7 @@ export interface ProgramTask {
   sort_order: number
   required: boolean
   color: string
-  tracker: '' | 'nutrition' | 'workout'
+  tracker: '' | 'nutrition' | 'workout' | 'meditation'
 }
 
 export interface Program {
@@ -75,7 +75,7 @@ export interface Entry {
   done: boolean
   completed_at: string | null
   /** Optional richer panel behind the task; never gates completion. */
-  tracker: '' | 'nutrition' | 'workout'
+  tracker: '' | 'nutrition' | 'workout' | 'meditation'
   color: string
 }
 
@@ -123,6 +123,24 @@ export interface Meal {
   notes: string
   eaten_at: string
   items: MealItem[]
+  /**
+   * '' for a hand-entered meal, or the state of the background estimate for a
+   * photographed one. Needed to tell "no numbers yet" from "zero calories".
+   */
+  estimate_status: '' | 'pending' | 'done' | 'failed'
+  estimate_error?: string
+}
+
+export interface Meditation {
+  id: number
+  day_id: number
+  minutes: number
+  /** Free text: Calm, Headspace, Waking Up, Muse, or anything typed in. */
+  source: string
+  style: 'guided' | 'unguided' | 'breathwork' | 'body_scan' | 'walking' | 'other'
+  notes: string
+  started_at?: string
+  created_at: string
 }
 
 export interface Workout {
@@ -144,6 +162,8 @@ export interface Totals {
   kcal_target: number | null
   workout_minutes: number
   outdoor_minutes: number
+  /** Optional; zero on days with no sitting logged. */
+  meditation_minutes: number
 }
 
 export interface Day {
@@ -162,6 +182,7 @@ export interface Day {
   photos: Photo[]
   meals: Meal[]
   workouts: Workout[]
+  meditations: Meditation[]
   totals: Totals
 }
 

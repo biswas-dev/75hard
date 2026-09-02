@@ -108,6 +108,15 @@ func main() {
 
 	server := api.NewServer(database, cfg, logger, photos, aiSvc)
 
+	// Food photos are estimated off the request path: a vision call takes most
+	// of a minute, and the upload must not wait for it. Two workers, because
+	// each job is a paid upstream call rather than a database read.
+	var estimator *api.FoodEstimator
+	if aiSvc.Enabled() {
+		estimator = api.NewFoodEstimator(server, 2, 64)
+		server.SetFoodEstimator(estimator)
+	}
+
 	r := chi.NewRouter()
 	r.Use(middleware.RequestID)
 	r.Use(middleware.RealIP)
@@ -242,11 +251,18 @@ func main() {
 			r.Delete("/photos/{photoID}", server.HandleDeletePhoto)
 
 			r.Post("/meals", server.HandleCreateMeal)
+			// Re-runs a background estimate that failed — usually because the
+			// daily AI limit was reached, which clears on its own.
+			r.Post("/meals/{mealID}/estimate", server.HandleRetryEstimate)
 			r.Patch("/meals/{mealID}", server.HandleUpdateMeal)
 			r.Delete("/meals/{mealID}", server.HandleDeleteMeal)
 
 			r.Post("/workouts", server.HandleCreateWorkout)
 			r.Delete("/workouts/{workoutID}", server.HandleDeleteWorkout)
+
+			// Optional tracking; never affects whether a day counts.
+			r.Post("/meditations", server.HandleCreateMeditation)
+			r.Delete("/meditations/{meditationID}", server.HandleDeleteMeditation)
 
 			// AI features. Rate limited far harder than the rest: each of
 			// these is a paid upstream call, not a database read.
@@ -278,6 +294,14 @@ func main() {
 		IdleTimeout:  120 * time.Second,
 	}
 
+	// Started before the listener so a restart's pending estimates are already
+	// being collected as the first requests arrive.
+	if estimator != nil {
+		estimatorCtx, stopEstimator := context.WithCancel(context.Background())
+		defer stopEstimator()
+		estimator.Start(estimatorCtx)
+	}
+
 	go func() {
 		logger.Info("listening", zap.String("addr", srv.Addr))
 		if err := srv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
@@ -290,6 +314,11 @@ func main() {
 	<-stop
 
 	logger.Info("shutting down")
+	// Anything in flight stays 'pending' and is requeued on the next boot,
+	// which is a far better outcome than holding shutdown open for a model.
+	if estimator != nil {
+		estimator.Stop()
+	}
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 	if err := srv.Shutdown(ctx); err != nil {

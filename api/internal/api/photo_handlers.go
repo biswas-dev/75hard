@@ -128,6 +128,14 @@ func (s *Server) HandleUploadPhoto(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	// Opt-in, because the detailed meal sheet uploads a food photo and then
+	// creates the meal itself from the filled-in form. Auto-logging every food
+	// photo would give that flow two meals for one plate.
+	if kind == photo.KindFood && dayID != nil && isTrue(r.FormValue("autolog")) {
+		s.queueFoodEstimate(r, userID, id, *dayID, saved.RelPath,
+			r.FormValue("slot"), strings.TrimSpace(r.FormValue("caption")))
+	}
+
 	p, err := s.photoByID(ctx, userID, id)
 	if err != nil {
 		respondError(w, http.StatusInternalServerError, "could not load image", "internal")
@@ -317,4 +325,78 @@ func scanPhoto(row scanner) (Photo, error) {
 	p.URL = "/api/photos/" + strconv.FormatInt(p.ID, 10) + "/file"
 	p.ThumbURL = p.URL + "?size=thumb"
 	return p, nil
+}
+
+// queueFoodEstimate creates the meal a food photo represents and hands it to
+// the background estimator.
+//
+// The meal row is written now, with the slot, so the photo appears in today's
+// log immediately and is tagged whether or not the model ever answers. The
+// numbers arrive behind it; estimate_status is what stops an unanswered
+// estimate from reading as a genuine zero-calorie meal.
+func (s *Server) queueFoodEstimate(
+	r *http.Request, userID, photoID, dayID int64, relPath, slot, hint string,
+) {
+	ctx := r.Context()
+
+	slot = strings.ToLower(strings.TrimSpace(slot))
+	if !validSlot(slot) {
+		slot = slotForTime(time.Now().In(s.userLocation(r)))
+	}
+
+	status := "pending"
+	if s.food == nil || !s.ai.Enabled() {
+		// No estimator configured: the meal is still logged and tagged, it
+		// just stays a manual entry to be filled in by hand.
+		status = ""
+	}
+
+	res, err := s.db.ExecContext(ctx, `
+		INSERT INTO meals (user_id, day_id, photo_id, name, slot, source, notes, estimate_status)
+		VALUES (?, ?, ?, '', ?, 'ai', ?, ?)`,
+		userID, dayID, photoID, slot, hint, status)
+	if err != nil {
+		s.log.Error("create meal from photo", zap.Error(err))
+		return
+	}
+	if status == "" {
+		return
+	}
+
+	mealID, _ := res.LastInsertId()
+	s.food.Enqueue(estimateJob{
+		userID:  userID,
+		mealID:  mealID,
+		photoID: photoID,
+		relPath: relPath,
+		hint:    hint,
+	})
+}
+
+// isTrue reads a permissive boolean from a multipart form field.
+func isTrue(v string) bool {
+	switch strings.ToLower(strings.TrimSpace(v)) {
+	case "1", "true", "yes", "on":
+		return true
+	}
+	return false
+}
+
+// slotForTime guesses the meal from the clock, so the common case needs no
+// choice at all. It is only a default — the slot is editable afterwards.
+func slotForTime(t time.Time) string {
+	switch h := t.Hour(); {
+	case h < 5:
+		return "snack" // a late night, not tomorrow's breakfast
+	case h < 11:
+		return "breakfast"
+	case h < 15:
+		return "lunch"
+	case h < 17:
+		return "snack"
+	case h < 22:
+		return "dinner"
+	default:
+		return "snack"
+	}
 }

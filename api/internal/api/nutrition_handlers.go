@@ -28,6 +28,11 @@ type Meal struct {
 	Notes    string     `json:"notes"`
 	EatenAt  string     `json:"eaten_at"`
 	Items    []MealItem `json:"items"`
+	// EstimateStatus is '' for a hand-entered meal, or pending/done/failed
+	// while a photo is being estimated in the background. The client needs it
+	// to tell "no calories yet" from "a zero-calorie meal".
+	EstimateStatus string `json:"estimate_status"`
+	EstimateError  string `json:"estimate_error,omitempty"`
 }
 
 // MealItem is one component of a meal.
@@ -411,7 +416,8 @@ func (s *Server) resolveDay(w http.ResponseWriter, r *http.Request, dayNumber *i
 
 func (s *Server) mealByID(ctx context.Context, id int64) (Meal, error) {
 	row := s.db.QueryRowContext(ctx, `
-		SELECT id, day_id, photo_id, name, slot, kcal, protein_g, carbs_g, fat_g, source, notes, eaten_at
+		SELECT id, day_id, photo_id, name, slot, kcal, protein_g, carbs_g, fat_g, source, notes, eaten_at,
+		       estimate_status, estimate_error
 		FROM meals WHERE id = ?`, id)
 	m, err := scanMeal(row)
 	if err != nil {
@@ -423,7 +429,8 @@ func (s *Server) mealByID(ctx context.Context, id int64) (Meal, error) {
 
 func (s *Server) mealsForDay(ctx context.Context, dayID int64) ([]Meal, error) {
 	rows, err := s.db.QueryContext(ctx, `
-		SELECT id, day_id, photo_id, name, slot, kcal, protein_g, carbs_g, fat_g, source, notes, eaten_at
+		SELECT id, day_id, photo_id, name, slot, kcal, protein_g, carbs_g, fat_g, source, notes, eaten_at,
+		       estimate_status, estimate_error
 		FROM meals WHERE day_id = ? ORDER BY eaten_at, id`, dayID)
 	if err != nil {
 		return nil, err
@@ -506,7 +513,8 @@ func (s *Server) workoutsForDay(ctx context.Context, dayID int64) ([]Workout, er
 func scanMeal(row scanner) (Meal, error) {
 	var m Meal
 	err := row.Scan(&m.ID, &m.DayID, &m.PhotoID, &m.Name, &m.Slot, &m.Kcal,
-		&m.ProteinG, &m.CarbsG, &m.FatG, &m.Source, &m.Notes, &m.EatenAt)
+		&m.ProteinG, &m.CarbsG, &m.FatG, &m.Source, &m.Notes, &m.EatenAt,
+		&m.EstimateStatus, &m.EstimateError)
 	if m.PhotoID != nil {
 		m.PhotoURL = "/api/photos/" + strconv.FormatInt(*m.PhotoID, 10) + "/file"
 	}

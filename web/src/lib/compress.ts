@@ -20,7 +20,7 @@ export interface CompressResult {
 }
 
 /** Compresses an image file, returning a WebP blob (JPEG where unsupported). */
-export async function compressImage(file: File): Promise<CompressResult> {
+export async function compressImage(file: Blob): Promise<CompressResult> {
   const bitmap = await loadBitmap(file)
 
   const { width, height } = fit(bitmap.width, bitmap.height, MAX_EDGE)
@@ -58,7 +58,7 @@ export async function compressImage(file: File): Promise<CompressResult> {
   return { blob, originalBytes: file.size, bytes: blob.size, width, height }
 }
 
-async function loadBitmap(file: File): Promise<ImageBitmap | HTMLImageElement> {
+async function loadBitmap(file: Blob): Promise<ImageBitmap | HTMLImageElement> {
   if ('createImageBitmap' in window) {
     try {
       // Honours the EXIF orientation flag, so a photo taken sideways is not

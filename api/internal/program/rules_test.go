@@ -1,6 +1,9 @@
 package program
 
-import "testing"
+import (
+	"slices"
+	"testing"
+)
 
 func TestDayNumber(t *testing.T) {
 	tests := []struct {
@@ -192,18 +195,110 @@ func TestLoadLocationFallsBackToUTC(t *testing.T) {
 }
 
 func TestDefaultTasksAreTheCanonicalSix(t *testing.T) {
-	tasks := DefaultTasks()
-	if len(tasks) != 6 {
-		t.Fatalf("got %d default tasks, want 6", len(tasks))
+	// The template may grow optional extras, but the canonical six must all be
+	// present and all be required — that is what makes the challenge itself.
+	canonical := []string{
+		"workout_indoor", "workout_outdoor", "diet",
+		"water", "reading", "progress_photo",
 	}
-	seen := map[string]bool{}
+
+	tasks := DefaultTasks()
+	seen := map[string]DefaultTask{}
 	for _, task := range tasks {
-		if seen[task.Key] {
+		if _, dup := seen[task.Key]; dup {
 			t.Errorf("duplicate task key %q", task.Key)
 		}
-		seen[task.Key] = true
+		seen[task.Key] = task
+	}
+
+	for _, key := range canonical {
+		task, ok := seen[key]
+		if !ok {
+			t.Errorf("canonical task %q is missing from the template", key)
+			continue
+		}
 		if !task.Required {
-			t.Errorf("default task %q should be required", task.Key)
+			t.Errorf("canonical task %q should be required", key)
+		}
+	}
+
+	// Anything else is an addition, and additions must never fail a run.
+	for key, task := range seen {
+		if !slices.Contains(canonical, key) && task.Required {
+			t.Errorf("non-canonical task %q is required; it must be optional", key)
+		}
+	}
+}
+
+func TestOptionalTaskCannotCompleteTheDay(t *testing.T) {
+	// The trap: "done" counts optional tasks so finishing one is visible, but
+	// comparing that total against the required count would let a meditation
+	// session stand in for the workout that was never done.
+	tasks := []Task{
+		{ID: 1, Kind: KindCheck, Required: true},
+		{ID: 2, Kind: KindCheck, Required: true},
+		{ID: 3, Kind: KindCheck, Required: false}, // meditation
+	}
+	entries := map[int64]Entry{
+		1: {TaskID: 1, Completed: true},
+		3: {TaskID: 3, Completed: true}, // optional done, required task 2 is not
+	}
+
+	complete, done, required := DayComplete(tasks, entries)
+	if complete {
+		t.Error("day reported complete with a required task outstanding")
+	}
+	if required != 2 {
+		t.Errorf("required = %d, want 2 — the optional task must not be counted", required)
+	}
+	if done != 1 {
+		t.Errorf("done = %d, want 1 — only the finished required task counts", done)
+	}
+}
+
+func TestOptionalTaskIsNotNeededForCompletion(t *testing.T) {
+	// The other half: skipping meditation entirely must still complete the day.
+	tasks := []Task{
+		{ID: 1, Kind: KindCheck, Required: true},
+		{ID: 2, Kind: KindCheck, Required: false},
+	}
+	complete, done, required := DayComplete(tasks, map[int64]Entry{1: {TaskID: 1, Completed: true}})
+	if !complete {
+		t.Error("an untouched optional task held the day back")
+	}
+	if done != 1 || required != 1 {
+		t.Errorf("done/required = %d/%d, want 1/1", done, required)
+	}
+
+	// And a finished optional task must not push the ring past its own total.
+	both := map[int64]Entry{1: {TaskID: 1, Completed: true}, 2: {TaskID: 2, Completed: true}}
+	if _, done, required = DayComplete(tasks, both); done != 1 || required != 1 {
+		t.Errorf("done/required = %d/%d, want 1/1 — the ring must never exceed its total", done, required)
+	}
+}
+
+func TestMeditationIsOptionalByDefault(t *testing.T) {
+	var found bool
+	for _, task := range DefaultTasks() {
+		if task.Key != "meditation" {
+			continue
+		}
+		found = true
+		if task.Required {
+			t.Error("meditation is required; missing it must never fail a run")
+		}
+		if task.Tracker != TrackerMeditation {
+			t.Errorf("tracker = %q, want %q", task.Tracker, TrackerMeditation)
+		}
+	}
+	if !found {
+		t.Fatal("no meditation task in the default template")
+	}
+
+	// The canonical six must all still be required.
+	for _, task := range DefaultTasks() {
+		if task.Key != "meditation" && !task.Required {
+			t.Errorf("%q became optional; the canonical rules are not negotiable", task.Key)
 		}
 	}
 }

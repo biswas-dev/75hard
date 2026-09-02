@@ -33,7 +33,9 @@ type Day struct {
 	Photos     []Photo   `json:"photos"`
 	Meals      []Meal    `json:"meals"`
 	Workouts   []Workout `json:"workouts"`
-	Totals     Totals    `json:"totals"`
+	// Optional, and empty on most days. Never affects completion.
+	Meditations []Meditation `json:"meditations"`
+	Totals      Totals       `json:"totals"`
 }
 
 // Entry is a task's state on a day, joined with its template definition so the
@@ -66,6 +68,8 @@ type Totals struct {
 	KcalTarget     *int    `json:"kcal_target"`
 	WorkoutMinutes int     `json:"workout_minutes"`
 	OutdoorMinutes int     `json:"outdoor_minutes"`
+	// Optional; zero on days with no sitting logged.
+	MeditationMinutes int `json:"meditation_minutes"`
 }
 
 // HandleGetToday returns the current day of the active program, creating the
@@ -192,12 +196,16 @@ func (s *Server) HandleListDays(w http.ResponseWriter, r *http.Request) {
 	// disagrees with the day screen. The second term adds photo-kind tasks
 	// that a progress photo has satisfied but that have no completed entry,
 	// which is what keeps the two views in step without double counting.
+	//
+	// Both terms are restricted to required tasks, because "total" above is,
+	// and an optional task counted here would render as 7/6.
 	rows, err := s.db.QueryContext(ctx, `
 		SELECT d.day_number, d.status,
 		       (SELECT COUNT(*) FROM task_entries te
+		        JOIN program_tasks pt0 ON pt0.id = te.program_task_id AND pt0.required = 1
 		        WHERE te.day_id = d.id AND te.completed_at IS NOT NULL)
 		     + (SELECT COUNT(*) FROM program_tasks pt
-		        WHERE pt.program_id = d.program_id AND pt.kind = 'photo'
+		        WHERE pt.program_id = d.program_id AND pt.kind = 'photo' AND pt.required = 1
 		          AND EXISTS (SELECT 1 FROM photos p WHERE p.day_id = d.id AND p.kind = 'progress')
 		          AND NOT EXISTS (SELECT 1 FROM task_entries te2
 		                          WHERE te2.day_id = d.id AND te2.program_task_id = pt.id
@@ -629,11 +637,15 @@ func (s *Server) dayByDate(r *http.Request, programID int64, onDate string) (*Da
 		e.Done = program.EntrySatisfies(
 			program.Task{ID: e.TaskID, Kind: e.Kind, TargetNum: e.TargetNum, Required: e.Required}, pe)
 
+		// Both counts cover required tasks only, matching program.DayComplete,
+		// so done/total is always a truthful ratio. An optional task that was
+		// finished carries that on the entry itself; counting it here would
+		// report "7/6" on a fully finished day.
 		if e.Required {
 			d.TasksTotal++
-		}
-		if e.Done {
-			d.TasksDone++
+			if e.Done {
+				d.TasksDone++
+			}
 		}
 		d.Entries = append(d.Entries, e)
 	}
@@ -652,6 +664,9 @@ func (s *Server) dayByDate(r *http.Request, programID int64, onDate string) (*Da
 	if d.Workouts, err = s.workoutsForDay(ctx, dayID); err != nil {
 		return nil, err
 	}
+	if d.Meditations, err = s.meditationsForDay(ctx, dayID); err != nil {
+		return nil, err
+	}
 
 	for _, m := range d.Meals {
 		d.Totals.Kcal += m.Kcal
@@ -664,6 +679,9 @@ func (s *Server) dayByDate(r *http.Request, programID int64, onDate string) (*Da
 		if wo.Kind == "outdoor" {
 			d.Totals.OutdoorMinutes += wo.Minutes
 		}
+	}
+	for _, m := range d.Meditations {
+		d.Totals.MeditationMinutes += m.Minutes
 	}
 
 	return d, nil

@@ -131,14 +131,17 @@ func EntrySatisfies(t Task, e Entry) bool {
 
 // DayComplete reports whether every required task has been satisfied, along
 // with the counts used to render the progress ring.
+//
+// Both counts cover required tasks only, so done/required is always a truthful
+// ratio: 6/6 means the day is complete and nothing else does.
+//
+// Optional tasks are excluded from both deliberately. Counting them in "done"
+// would let a meditation session close out a day with the workout still
+// undone, and would report "7/6" on a day where everything was finished.
+// Whether an optional task was done is carried on the task itself.
 func DayComplete(tasks []Task, entries map[int64]Entry) (complete bool, done, required int) {
 	for _, t := range tasks {
 		if !t.Required {
-			// Optional tasks still count toward "done" when finished, but
-			// never hold the day back.
-			if EntrySatisfies(t, entries[t.ID]) {
-				done++
-			}
 			continue
 		}
 		required++
@@ -202,15 +205,16 @@ func Streak(statuses map[int]string, throughDay int) int {
 // Trackers a task can carry. A tracker is an optional richer panel; it never
 // affects whether the task counts as done.
 const (
-	TrackerNone      = ""
-	TrackerNutrition = "nutrition"
-	TrackerWorkout   = "workout"
+	TrackerNone       = ""
+	TrackerNutrition  = "nutrition"
+	TrackerWorkout    = "workout"
+	TrackerMeditation = "meditation"
 )
 
 // ValidTracker reports whether t is a tracker we know how to render.
 func ValidTracker(t string) bool {
 	switch t {
-	case TrackerNone, TrackerNutrition, TrackerWorkout:
+	case TrackerNone, TrackerNutrition, TrackerWorkout, TrackerMeditation:
 		return true
 	}
 	return false
@@ -231,8 +235,9 @@ type DefaultTask struct {
 
 func f(v float64) *float64 { return &v }
 
-// DefaultTasks returns the canonical six, used as the starting template for a
-// new program. Every field is editable afterwards.
+// DefaultTasks returns the canonical six plus one optional extra, used as the
+// starting template for a new program. Every field is editable afterwards, and
+// the optional task can simply be deleted.
 func DefaultTasks() []DefaultTask {
 	return []DefaultTask{
 		{
@@ -267,6 +272,16 @@ func DefaultTasks() []DefaultTask {
 			Key: "progress_photo", Title: "Take a progress photo",
 			Detail: "One photo, every day.",
 			Icon:   "camera", Kind: KindPhoto, Required: true,
+		},
+		// Not part of the canonical rules, and deliberately not required:
+		// missing it must never fail a run. It is here because the habit fits
+		// the same daily rhythm, and tracking it alongside the rest is more
+		// useful than tracking it somewhere else.
+		{
+			Key: "meditation", Title: "Meditate",
+			Detail: "Optional. Log how long and where — this never fails the challenge.",
+			Icon:   "lotus", Kind: KindCheck, Required: false,
+			Tracker: TrackerMeditation,
 		},
 	}
 }

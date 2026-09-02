@@ -1,5 +1,6 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { api } from '../lib/api'
+import { PhotoUpload } from './PhotoUpload'
 import type { Day, Entry } from '../lib/types'
 
 interface Props {
@@ -24,6 +25,9 @@ export function TaskTracker({ entry, day, onChanged, onLogMeal }: Props) {
   if (entry.tracker === 'workout') {
     return <WorkoutTracker entry={entry} day={day} onChanged={onChanged} />
   }
+  if (entry.tracker === 'meditation') {
+    return <MeditationTracker entry={entry} day={day} onChanged={onChanged} />
+  }
   return null
 }
 
@@ -41,6 +45,15 @@ function NutritionTracker({
   const { totals, meals } = day
   const target = totals.kcal_target ?? 0
   const pct = target > 0 ? Math.min(100, (totals.kcal / target) * 100) : 0
+
+  // A background estimate has no way to push, so poll while one is running.
+  // Stops as soon as nothing is pending, so an idle panel makes no requests.
+  const pending = meals.some((m) => m.estimate_status === 'pending')
+  useEffect(() => {
+    if (!pending) return
+    const id = window.setInterval(onChanged, 4000)
+    return () => window.clearInterval(id)
+  }, [pending, onChanged])
 
   return (
     <div className="space-y-4">
@@ -74,13 +87,34 @@ function NutritionTracker({
           {meals.map((meal) => (
             <li key={meal.id} className="flex items-center gap-3 py-2">
               <span className="min-w-0 flex-1">
-                <span className="block truncate text-sm text-ink-200">{meal.name || meal.slot}</span>
+                <span className="block truncate text-sm text-ink-200">
+                  {meal.name || (meal.estimate_status === 'pending' ? 'Reading the photo…' : meal.slot)}
+                </span>
                 <span className="text-xs capitalize text-ink-600">
                   {meal.slot}
-                  {meal.source === 'ai' && ' · AI estimate'}
+                  {meal.estimate_status === 'done' && ' · AI estimate'}
+                  {meal.estimate_status === 'failed' && (
+                    <>
+                      {' · '}
+                      <button
+                        className="text-flame-400 hover:underline"
+                        title={meal.estimate_error}
+                        onClick={async () => {
+                          await api.retryEstimate(meal.id)
+                          onChanged()
+                        }}
+                      >
+                        estimate failed — retry
+                      </button>
+                    </>
+                  )}
+                  {meal.estimate_status === '' && meal.source === 'ai' && ' · AI estimate'}
                 </span>
               </span>
-              <span className="shrink-0 font-mono text-sm text-ink-400">{Math.round(meal.kcal)}</span>
+              {/* A pending estimate must not render as a real zero. */}
+              <span className="shrink-0 font-mono text-sm text-ink-400">
+                {meal.estimate_status === 'pending' ? <PulseDots /> : Math.round(meal.kcal)}
+              </span>
               <button
                 aria-label={`Remove ${meal.name || 'meal'}`}
                 className="shrink-0 px-1 text-ink-600 hover:text-red-400"
@@ -96,8 +130,19 @@ function NutritionTracker({
         </ul>
       )}
 
+      {/* The fast path: one photo, tagged by the clock, priced in the
+          background. The meal sheet below is for when you want to be exact. */}
+      <PhotoUpload
+        kind="food"
+        dayNumber={day.day_number}
+        label="Snap a meal"
+        withSlot
+        autolog
+        onUploaded={onChanged}
+      />
+
       <button className="btn-ghost w-full py-2 text-sm" onClick={onLogMeal}>
-        + Log a meal
+        + Log a meal in detail
       </button>
       <p className="text-center text-xs text-ink-600">
         Optional. Ticking the task is enough on its own.
@@ -203,5 +248,193 @@ function Macro({ label, value }: { label: string; value: number }) {
       </p>
       <p className="text-[11px] text-ink-600">{label}</p>
     </div>
+  )
+}
+
+/** The apps people actually use, offered as shortcuts. Anything can be typed. */
+const MEDITATION_SOURCES = ['Calm', 'Headspace', 'Waking Up', 'Muse', 'Insight Timer', 'Unguided']
+
+const MEDITATION_STYLES = [
+  { value: 'guided', label: 'Guided' },
+  { value: 'unguided', label: 'Unguided' },
+  { value: 'breathwork', label: 'Breathwork' },
+  { value: 'body_scan', label: 'Body scan' },
+  { value: 'walking', label: 'Walking' },
+  { value: 'other', label: 'Other' },
+]
+
+/**
+ * Meditation is the one tracker behind an optional task.
+ *
+ * It is not one of the six rules, so missing it never fails a run — the panel
+ * says so plainly, because a tracker that looks mandatory changes how the
+ * whole challenge feels.
+ */
+function MeditationTracker({ entry, day, onChanged }: { entry: Entry; day: Day; onChanged: () => void }) {
+  const [minutes, setMinutes] = useState(10)
+  const [source, setSource] = useState('')
+  const [style, setStyle] = useState('guided')
+  const [busy, setBusy] = useState(false)
+
+  const sessions = day.meditations ?? []
+  const total = day.totals.meditation_minutes ?? 0
+
+  async function add() {
+    if (busy || minutes <= 0) return
+    setBusy(true)
+    try {
+      await api.createMeditation({
+        day_number: day.day_number,
+        minutes,
+        source: source.trim(),
+        style,
+        task_id: entry.task_id,
+      })
+      setSource('')
+      onChanged()
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  return (
+    <div className="space-y-4">
+      <div className="flex items-baseline justify-between">
+        <span className="text-sm text-ink-400">Today</span>
+        <span className="font-mono text-sm text-ink-200">
+          {total}
+          <span className="text-ink-600"> min</span>
+        </span>
+      </div>
+
+      {sessions.length > 0 && (
+        <ul className="divide-y divide-ink-800">
+          {sessions.map((m) => (
+            <li key={m.id} className="flex items-center gap-3 py-2">
+              <span className="min-w-0 flex-1">
+                <span className="block truncate text-sm text-ink-200">
+                  {m.source || MEDITATION_STYLES.find((s) => s.value === m.style)?.label || 'Session'}
+                </span>
+                <span className="text-xs text-ink-600">
+                  {MEDITATION_STYLES.find((s) => s.value === m.style)?.label ?? m.style}
+                </span>
+              </span>
+              <span className="shrink-0 font-mono text-sm text-ink-400">{m.minutes} min</span>
+              <button
+                aria-label="Remove session"
+                className="shrink-0 px-1 text-ink-600 hover:text-red-400"
+                onClick={async () => {
+                  await api.deleteMeditation(m.id)
+                  onChanged()
+                }}
+              >
+                ×
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
+
+      <div>
+        <label className="mb-1.5 block text-xs text-ink-500" htmlFor="meditation-minutes">
+          How long
+        </label>
+        <div className="flex flex-wrap gap-1.5">
+          {[5, 10, 15, 20, 30].map((m) => (
+            <button
+              key={m}
+              type="button"
+              onClick={() => setMinutes(m)}
+              className={`rounded-lg border px-3 py-1.5 text-sm transition ${
+                minutes === m
+                  ? 'border-flame-500 bg-flame-500/15 text-flame-400'
+                  : 'border-ink-800 bg-ink-850 text-ink-400'
+              }`}
+            >
+              {m}
+            </button>
+          ))}
+          <input
+            id="meditation-minutes"
+            type="number"
+            min={1}
+            max={1440}
+            value={minutes}
+            onChange={(e) => setMinutes(Number(e.target.value))}
+            aria-label="Minutes meditated"
+            className="w-20 rounded-lg border border-ink-800 bg-ink-850 px-2 py-1.5 text-sm text-ink-200"
+          />
+        </div>
+      </div>
+
+      <div>
+        <label className="mb-1.5 block text-xs text-ink-500" htmlFor="meditation-source">
+          Where
+        </label>
+        <div className="mb-2 flex flex-wrap gap-1.5">
+          {MEDITATION_SOURCES.map((s) => (
+            <button
+              key={s}
+              type="button"
+              onClick={() => setSource(source === s ? '' : s)}
+              className={`rounded-lg border px-2.5 py-1 text-xs transition ${
+                source === s
+                  ? 'border-flame-500 bg-flame-500/15 text-flame-400'
+                  : 'border-ink-800 bg-ink-850 text-ink-400'
+              }`}
+            >
+              {s}
+            </button>
+          ))}
+        </div>
+        <input
+          id="meditation-source"
+          type="text"
+          value={source}
+          onChange={(e) => setSource(e.target.value)}
+          placeholder="Or type anywhere else"
+          className="w-full rounded-lg border border-ink-800 bg-ink-850 px-3 py-2 text-sm text-ink-200 placeholder:text-ink-600"
+        />
+      </div>
+
+      <div className="flex flex-wrap gap-1.5">
+        {MEDITATION_STYLES.map((s) => (
+          <button
+            key={s.value}
+            type="button"
+            onClick={() => setStyle(s.value)}
+            className={`rounded-lg border px-2.5 py-1 text-xs transition ${
+              style === s.value
+                ? 'border-flame-500 bg-flame-500/15 text-flame-400'
+                : 'border-ink-800 bg-ink-850 text-ink-400'
+            }`}
+          >
+            {s.label}
+          </button>
+        ))}
+      </div>
+
+      <button className="btn-ghost w-full py-2 text-sm" onClick={add} disabled={busy || minutes <= 0}>
+        {busy ? 'Saving…' : '+ Log a sitting'}
+      </button>
+      <p className="text-center text-xs text-ink-600">
+        Optional — meditation is not one of the six rules, and skipping it never fails your run.
+      </p>
+    </div>
+  )
+}
+
+/** Three dots, for a number that is still being worked out. */
+function PulseDots() {
+  return (
+    <span className="inline-flex gap-0.5 align-middle" aria-label="Estimating">
+      {[0, 150, 300].map((delay) => (
+        <span
+          key={delay}
+          className="h-1 w-1 animate-pulse rounded-full bg-ink-500"
+          style={{ animationDelay: `${delay}ms` }}
+        />
+      ))}
+    </span>
   )
 }
