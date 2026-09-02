@@ -197,6 +197,7 @@ func main() {
 
 			r.Get("/today", server.HandleGetToday)
 			r.Get("/programs/{programID}/days", server.HandleListDays)
+			r.Get("/programs/{programID}/grid", server.HandleGetGrid)
 			r.Get("/programs/{programID}/days/{dayNumber}", server.HandleGetDay)
 			r.Patch("/programs/{programID}/days/{dayNumber}", server.HandleUpdateDay)
 			r.Post("/programs/{programID}/days/{dayNumber}/tasks/{taskID}", server.HandleToggleTask)

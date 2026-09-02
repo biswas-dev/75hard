@@ -48,6 +48,7 @@ type ProgramTask struct {
 	Unit      string   `json:"unit"`
 	SortOrder int      `json:"sort_order"`
 	Required  bool     `json:"required"`
+	Color     string   `json:"color"`
 }
 
 type createProgramRequest struct {
@@ -69,6 +70,7 @@ type taskPayload struct {
 	TargetNum *float64 `json:"target_num"`
 	Unit      string   `json:"unit"`
 	Required  *bool    `json:"required"`
+	Color     string   `json:"color"`
 }
 
 // HandleCreateProgram starts a new attempt, seeding the canonical six tasks
@@ -181,10 +183,11 @@ func (s *Server) HandleCreateProgram(w http.ResponseWriter, r *http.Request) {
 
 		if _, err := tx.ExecContext(ctx, `
 			INSERT INTO program_tasks (program_id, task_key, title, detail, icon, kind,
-			                           target_num, unit, sort_order, required)
-			VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+			                           target_num, unit, sort_order, required, color)
+			VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 			programID, key, title, strings.TrimSpace(t.Detail), defaultString(t.Icon, "check"),
-			kind, t.TargetNum, strings.TrimSpace(t.Unit), i, boolToInt(required)); err != nil {
+			kind, t.TargetNum, strings.TrimSpace(t.Unit), i, boolToInt(required),
+			defaultString(t.Color, paletteColor(i))); err != nil {
 			s.log.Error("insert program task", zap.Error(err))
 			respondError(w, http.StatusInternalServerError, "could not create tasks", "internal")
 			return
@@ -378,8 +381,8 @@ func (s *Server) HandleRestartProgram(w http.ResponseWriter, r *http.Request) {
 	// Copy the template rather than pointing at the old rows, so editing the
 	// new attempt's tasks can't rewrite the history of the old one.
 	if _, err := tx.ExecContext(ctx, `
-		INSERT INTO program_tasks (program_id, task_key, title, detail, icon, kind, target_num, unit, sort_order, required)
-		SELECT ?, task_key, title, detail, icon, kind, target_num, unit, sort_order, required
+		INSERT INTO program_tasks (program_id, task_key, title, detail, icon, kind, target_num, unit, sort_order, required, color)
+		SELECT ?, task_key, title, detail, icon, kind, target_num, unit, sort_order, required, color
 		FROM program_tasks WHERE program_id = ?`, newID, id); err != nil {
 		respondError(w, http.StatusInternalServerError, "could not copy tasks", "internal")
 		return
@@ -432,10 +435,11 @@ func (s *Server) HandleCreateTask(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if _, err := s.db.ExecContext(r.Context(), `
-		INSERT INTO program_tasks (program_id, task_key, title, detail, icon, kind, target_num, unit, sort_order, required)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		INSERT INTO program_tasks (program_id, task_key, title, detail, icon, kind, target_num, unit, sort_order, required, color)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		id, key, title, strings.TrimSpace(t.Detail), defaultString(t.Icon, "check"),
-		t.Kind, t.TargetNum, strings.TrimSpace(t.Unit), nextOrder, boolToInt(required)); err != nil {
+		t.Kind, t.TargetNum, strings.TrimSpace(t.Unit), nextOrder, boolToInt(required),
+		defaultString(t.Color, paletteColor(nextOrder))); err != nil {
 		if isUniqueViolation(err) {
 			respondError(w, http.StatusConflict, "a task with that key already exists", "task_exists")
 			return
@@ -461,6 +465,7 @@ type updateTaskRequest struct {
 	Unit      *string  `json:"unit"`
 	SortOrder *int     `json:"sort_order"`
 	Required  *bool    `json:"required"`
+	Color     *string  `json:"color"`
 }
 
 // HandleUpdateTask edits one task in the template.
@@ -509,6 +514,13 @@ func (s *Server) HandleUpdateTask(w http.ResponseWriter, r *http.Request) {
 	}
 	if req.Required != nil {
 		sets, args = append(sets, "required = ?"), append(args, boolToInt(*req.Required))
+	}
+	if req.Color != nil {
+		if !validHexColor(*req.Color) {
+			respondError(w, http.StatusBadRequest, "color must be a hex value like #ff6b35", "invalid_color")
+			return
+		}
+		sets, args = append(sets, "color = ?"), append(args, strings.ToLower(*req.Color))
 	}
 	if len(sets) == 0 {
 		respondError(w, http.StatusBadRequest, "nothing to update", "no_changes")
@@ -633,7 +645,7 @@ func (s *Server) loadProgram(r *http.Request, id int64) (Program, error) {
 
 func (s *Server) loadTasks(r *http.Request, programID int64) ([]ProgramTask, error) {
 	rows, err := s.db.QueryContext(r.Context(), `
-		SELECT id, task_key, title, detail, icon, kind, target_num, unit, sort_order, required
+		SELECT id, task_key, title, detail, icon, kind, target_num, unit, sort_order, required, color
 		FROM program_tasks WHERE program_id = ? ORDER BY sort_order, id`, programID)
 	if err != nil {
 		return nil, err
@@ -645,7 +657,7 @@ func (s *Server) loadTasks(r *http.Request, programID int64) ([]ProgramTask, err
 		var t ProgramTask
 		var required int
 		if err := rows.Scan(&t.ID, &t.Key, &t.Title, &t.Detail, &t.Icon, &t.Kind,
-			&t.TargetNum, &t.Unit, &t.SortOrder, &required); err != nil {
+			&t.TargetNum, &t.Unit, &t.SortOrder, &required, &t.Color); err != nil {
 			return nil, err
 		}
 		t.Required = required == 1
@@ -705,4 +717,32 @@ func slugify(s string) string {
 		return "task"
 	}
 	return out
+}
+
+// defaultPalette is the colour assigned to each task by position, so a fresh
+// program's grids are distinguishable without the user picking anything.
+var defaultPalette = []string{"#ff6b35", "#37d67a", "#4a9eff", "#ffd166", "#b47aea", "#ff5d8f"}
+
+func paletteColor(i int) string {
+	if i < 0 {
+		i = 0
+	}
+	return defaultPalette[i%len(defaultPalette)]
+}
+
+// validHexColor accepts #rgb and #rrggbb, which is all the client sends.
+func validHexColor(c string) bool {
+	if len(c) != 4 && len(c) != 7 {
+		return false
+	}
+	if c[0] != '#' {
+		return false
+	}
+	for _, r := range c[1:] {
+		isHex := (r >= '0' && r <= '9') || (r >= 'a' && r <= 'f') || (r >= 'A' && r <= 'F')
+		if !isHex {
+			return false
+		}
+	}
+	return true
 }

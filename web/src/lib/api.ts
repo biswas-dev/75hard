@@ -6,6 +6,7 @@ import type {
   AuthResponse,
   Day,
   DaySummary,
+  Grid,
   Meal,
   Photo,
   Plan,
@@ -173,6 +174,10 @@ class ApiClient {
 
   listDays(programId: number) {
     return this.request<DaySummary[]>(`/api/programs/${programId}/days`)
+  }
+
+  grid(programId: number) {
+    return this.request<Grid>(`/api/programs/${programId}/grid`)
   }
 
   getDay(programId: number, dayNumber: number) {

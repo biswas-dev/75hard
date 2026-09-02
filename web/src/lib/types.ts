@@ -36,6 +36,7 @@ export interface ProgramTask {
   unit: string
   sort_order: number
   required: boolean
+  color: string
 }
 
 export interface Program {
@@ -258,4 +259,35 @@ export interface Plan {
 export interface CoachNote {
   note: string
   tone: string
+}
+
+// ---- activity grid ----
+
+/** One activity's row: a cell per day of the program, index 0 == day 1. */
+export interface GridTask {
+  task_id: number
+  key: string
+  title: string
+  icon: string
+  kind: TaskKind
+  unit: string
+  target_num: number | null
+  required: boolean
+  color: string
+  /** '' not done | 'd' done | 'p' partial | 'm' missed | 'f' future */
+  cells: string[]
+  values: Record<string, number>
+  completed: number
+  streak: number
+  best_streak: number
+}
+
+export interface Grid {
+  program_id: number
+  start_date: string
+  length_days: number
+  current_day: number
+  today: string
+  tasks: GridTask[]
+  day_status: string[]
 }
