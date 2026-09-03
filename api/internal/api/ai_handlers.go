@@ -20,6 +20,11 @@ import (
 // but still bounded so a hung provider does not leak a goroutine forever.
 const aiCallTimeout = 3 * time.Minute
 
+// AISlotTimeout bounds one provider. Deliberately well under aiCallTimeout:
+// go-ai holds a reserve back for untried providers, but a per-slot timeout
+// close to the whole budget leaves that reserve nothing to work with.
+const AISlotTimeout = 45 * time.Second
+
 // DailyAILimit caps model calls per user per rolling 24 hours. Generous for
 // real use, low enough that a runaway client cannot spend the key.
 const DailyAILimit = 40

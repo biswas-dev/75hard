@@ -633,7 +633,7 @@ func (s *Server) dayByDate(r *http.Request, programID int64, onDate string) (*Da
 		       te.value_num, COALESCE(te.note, ''), te.completed_at
 		FROM program_tasks pt
 		LEFT JOIN task_entries te ON te.program_task_id = pt.id AND te.day_id = ?
-		WHERE pt.program_id = ?
+		WHERE pt.program_id = ? AND pt.hidden = 0
 		ORDER BY pt.sort_order, pt.id`, dayID, programID)
 	if err != nil {
 		return nil, err

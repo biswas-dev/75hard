@@ -22,8 +22,21 @@ interface Props {
 
 const SLOTS = ['breakfast', 'lunch', 'dinner', 'snack'] as const
 
-/** The rear camera is the only way to shoot your own back or side. */
-const REAR_POSES: Pose[] = ['back', 'side']
+/**
+ * Which lens to open with, by what is being photographed.
+ *
+ * A progress shot is of yourself, so the front camera is the one you can
+ * frame — except a back or side shot, which you cannot see to take and which
+ * needs the rear lens and the timer. Food is in front of you and never in the
+ * selfie camera.
+ */
+export function lensFor(kind: Props['kind'], pose: Pose): 'user' | 'environment' {
+  if (kind === 'progress') {
+    return pose === 'back' || pose === 'side' ? 'environment' : 'user'
+  }
+  // Food and ingredients are on the table, not in a mirror.
+  return 'environment'
+}
 
 /**
  * Camera-first upload button. Compresses in the browser before sending, and
@@ -53,6 +66,10 @@ export function PhotoUpload({
   // Left unset so the server can infer the meal from the time of day; picking
   // one overrides that.
   const [slot, setSlot] = useState<string>('')
+  // Sent to the model alongside the image. A photograph cannot show what is
+  // under the sauce, how much oil went in, or that the milk was whole — and
+  // those are exactly the things the calorie estimate turns on.
+  const [note, setNote] = useState('')
 
   const canUseCamera =
     typeof navigator !== 'undefined' && !!navigator.mediaDevices?.getUserMedia
@@ -71,6 +88,7 @@ export function PhotoUpload({
         dayNumber,
         pose: withPose ? pose : undefined,
         slot: withSlot && slot ? slot : undefined,
+        caption: note.trim() || undefined,
         autolog,
       })
 
@@ -81,6 +99,7 @@ export function PhotoUpload({
           : 'Saved',
       )
       onUploaded(photo)
+      setNote('')
       window.setTimeout(() => setStatus(''), 4000)
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Upload failed')
@@ -105,7 +124,7 @@ export function PhotoUpload({
           label={label}
           // A back or side shot needs the rear camera and a timer; opening on
           // the right one saves a tap at exactly the moment it is awkward.
-          initialFacing={withPose && REAR_POSES.includes(pose) ? 'environment' : 'user'}
+          initialFacing={lensFor(kind, pose)}
           onClose={() => setCameraOpen(false)}
           onCapture={(blob) => {
             setCameraOpen(false)
@@ -162,6 +181,22 @@ export function PhotoUpload({
             </button>
           ))}
         </div>
+      )}
+
+      {withSlot && (
+        <label className="mb-2 block">
+          <input
+            type="text"
+            value={note}
+            onChange={(e) => setNote(e.target.value)}
+            placeholder="Optional: what is it? e.g. two eggs, sourdough, olive oil"
+            className="w-full rounded-xl border border-ink-800 bg-ink-850 px-3 py-2 text-sm text-ink-200 placeholder:text-ink-600"
+          />
+          <span className="mt-1 block text-xs text-ink-600">
+            A photo cannot show what is under the sauce or how much oil went in. A few words
+            make the estimate far better.
+          </span>
+        </label>
       )}
 
       <input

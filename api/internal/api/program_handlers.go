@@ -52,6 +52,10 @@ type ProgramTask struct {
 	// Tracker names an optional richer panel behind the task. Never affects
 	// completion — a tap is always enough.
 	Tracker string `json:"tracker"`
+	// Hidden removes an optional task from the day screen, the grid and every
+	// count, without deleting the history it has already accumulated. Only
+	// optional tasks can be hidden; a required one is the challenge.
+	Hidden bool `json:"hidden"`
 }
 
 type createProgramRequest struct {
@@ -472,6 +476,7 @@ type updateTaskRequest struct {
 	Required  *bool    `json:"required"`
 	Color     *string  `json:"color"`
 	Tracker   *string  `json:"tracker"`
+	Hidden    *bool    `json:"hidden"`
 }
 
 // HandleUpdateTask edits one task in the template.
@@ -520,6 +525,22 @@ func (s *Server) HandleUpdateTask(w http.ResponseWriter, r *http.Request) {
 	}
 	if req.Required != nil {
 		sets, args = append(sets, "required = ?"), append(args, boolToInt(*req.Required))
+	}
+	if req.Hidden != nil {
+		// Only an optional task can be hidden. Letting a required one vanish
+		// would silently change what completing a day means, which is the one
+		// thing the rules are for.
+		if *req.Hidden {
+			var required int
+			if err := s.db.QueryRowContext(r.Context(),
+				`SELECT required FROM program_tasks WHERE id = ? AND program_id = ?`,
+				taskID, programID).Scan(&required); err == nil && required == 1 {
+				respondError(w, http.StatusBadRequest,
+					"a required task cannot be hidden; make it optional first", "task_required")
+				return
+			}
+		}
+		sets, args = append(sets, "hidden = ?"), append(args, boolToInt(*req.Hidden))
 	}
 	if req.Tracker != nil {
 		if !program.ValidTracker(*req.Tracker) {
@@ -658,7 +679,7 @@ func (s *Server) loadProgram(r *http.Request, id int64) (Program, error) {
 
 func (s *Server) loadTasks(r *http.Request, programID int64) ([]ProgramTask, error) {
 	rows, err := s.db.QueryContext(r.Context(), `
-		SELECT id, task_key, title, detail, icon, kind, target_num, unit, sort_order, required, color, tracker
+		SELECT id, task_key, title, detail, icon, kind, target_num, unit, sort_order, required, color, tracker, hidden
 		FROM program_tasks WHERE program_id = ? ORDER BY sort_order, id`, programID)
 	if err != nil {
 		return nil, err
@@ -668,12 +689,14 @@ func (s *Server) loadTasks(r *http.Request, programID int64) ([]ProgramTask, err
 	out := []ProgramTask{}
 	for rows.Next() {
 		var t ProgramTask
-		var required int
+		var required, hidden int
 		if err := rows.Scan(&t.ID, &t.Key, &t.Title, &t.Detail, &t.Icon, &t.Kind,
-			&t.TargetNum, &t.Unit, &t.SortOrder, &required, &t.Color, &t.Tracker); err != nil {
+			&t.TargetNum, &t.Unit, &t.SortOrder, &required, &t.Color, &t.Tracker,
+			&hidden); err != nil {
 			return nil, err
 		}
 		t.Required = required == 1
+		t.Hidden = hidden == 1
 		out = append(out, t)
 	}
 	return out, rows.Err()

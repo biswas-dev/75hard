@@ -31,6 +31,9 @@ const emptyItem: DraftItem = { name: '', qty: '1', unit: 'serving', kcal: '', pr
  */
 export function MealSheet({ dayNumber, onClose, onSaved }: Props) {
   const [name, setName] = useState('')
+  // Sent to the model with the photo, and not saved: it is context for the
+  // estimate, not part of the meal record.
+  const [detail, setDetail] = useState('')
   const [slot, setSlot] = useState('lunch')
   const [photo, setPhoto] = useState<Photo | null>(null)
   const [itemised, setItemised] = useState(false)
@@ -64,7 +67,11 @@ export function MealSheet({ dayNumber, onClose, onSaved }: Props) {
     setError('')
     setAiNote('')
     try {
-      const { estimate, cached } = await api.analyzeFood(photo.id, name)
+      // Name and detail together: a photograph cannot show what is under the
+      // sauce, how much oil went in, or that the milk was whole — and those
+      // are exactly what the calorie figure turns on.
+      const hint = [name.trim(), detail.trim()].filter(Boolean).join('. ')
+      const { estimate, cached } = await api.analyzeFood(photo.id, hint)
       applyEstimate(estimate)
       setAiNote(
         (cached ? 'From a previous estimate. ' : '') +
@@ -181,6 +188,16 @@ export function MealSheet({ dayNumber, onClose, onSaved }: Props) {
 
           {photo && aiAvailable && (
             <div>
+              <label className="label" htmlFor="meal-detail">
+                Anything the photo cannot show
+              </label>
+              <input
+                id="meal-detail"
+                className="field mb-2"
+                placeholder="e.g. cooked in butter, whole milk, large portion"
+                value={detail}
+                onChange={(e) => setDetail(e.target.value)}
+              />
               <button
                 type="button"
                 className="btn-ghost w-full border-flame-500/30 text-flame-400"

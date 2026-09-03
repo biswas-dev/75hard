@@ -163,7 +163,8 @@ func (s *Server) HandleGetGrid(w http.ResponseWriter, r *http.Request) {
 
 	trows, err := s.db.QueryContext(ctx, `
 		SELECT id, task_key, title, icon, kind, unit, target_num, required, color
-		FROM program_tasks WHERE program_id = ? ORDER BY sort_order, id`, programID)
+		FROM program_tasks WHERE program_id = ? AND hidden = 0
+		 ORDER BY sort_order, id`, programID)
 	if err != nil {
 		respondError(w, http.StatusInternalServerError, "could not load tasks", "internal")
 		return

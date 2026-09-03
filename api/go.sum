@@ -1,5 +1,7 @@
 github.com/anchoo2kewl/go-ai v0.2.0 h1:/SPAKJ6blUAZrJLWfjCc3oXP2UWjkFWbkawlGd6kuFU=
 github.com/anchoo2kewl/go-ai v0.2.0/go.mod h1:a2MiguvP/hs9iiKQcEkj21K5J0N9ye+OkSV4B77W2Ws=
+github.com/anchoo2kewl/go-ai v0.3.0 h1:2U4Zt2+ertpUaeZbtWlpJMRHggusD5dIak+5m1Ku0RQ=
+github.com/anchoo2kewl/go-ai v0.3.0/go.mod h1:a2MiguvP/hs9iiKQcEkj21K5J0N9ye+OkSV4B77W2Ws=
 github.com/anchoo2kewl/go-api v0.1.0 h1:l3OhNU+RCJL5WbGKfL45Yz1SQiczykZRLaiKfkSMmRo=
 github.com/anchoo2kewl/go-api v0.1.0/go.mod h1:JryzYEUdEs/fJlC0c9aK+l6ppnmrn8N2/9sRr8ktnww=
 github.com/anchoo2kewl/go-login v0.2.1 h1:u7YzEEeCUlAvxBTb19yVVHcAH0LtCaW5/wtqbDTb7RA=
@@ -24,6 +26,8 @@ github.com/google/uuid v1.6.0 h1:NIvaJDMOsjHA8n1jAhLSgzrAzy1Hgr+hNrb57e+94F0=
 github.com/google/uuid v1.6.0/go.mod h1:TIyPZe4MgqvfeYDBFedMoGGpEw/LqOeaOT+nhxU+yHo=
 github.com/hashicorp/golang-lru/v2 v2.0.7 h1:a+bsQ5rvGLjzHuww6tVxozPZFVghXaHOwFs4luLUK2k=
 github.com/hashicorp/golang-lru/v2 v2.0.7/go.mod h1:QeFd9opnmA6QUJc5vARoKUSoFhyfM2/ZepoAG6RGpeM=
+github.com/ledongthuc/pdf v0.0.0-20260902151811-0378b83ae5e4 h1:UqVPZul6+Pof086Qab5S9omZMH1EsZHt6hpprNG4oMo=
+github.com/ledongthuc/pdf v0.0.0-20260902151811-0378b83ae5e4/go.mod h1:1fEHWurg7pvf5SG6XNE5Q8UZmOwex51Mkx3SLhrW5B4=
 github.com/mattn/go-isatty v0.0.24 h1:tGZZoVgT/KiqK1c8ocVLeDS8BSWMRd47J3Lbz7vsReI=
 github.com/mattn/go-isatty v0.0.24/go.mod h1:nMCL3Zebbrt45jsMDgnfIwz6ydEQApk5oEI3HqDio6A=
 github.com/ncruces/go-strftime v1.0.0 h1:HMFp8mLCTPp341M/ZnA4qaf7ZlsbTc+miZjCLOFAw7w=

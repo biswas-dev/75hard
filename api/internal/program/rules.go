@@ -209,12 +209,13 @@ const (
 	TrackerNutrition  = "nutrition"
 	TrackerWorkout    = "workout"
 	TrackerMeditation = "meditation"
+	TrackerJournal    = "journal"
 )
 
 // ValidTracker reports whether t is a tracker we know how to render.
 func ValidTracker(t string) bool {
 	switch t {
-	case TrackerNone, TrackerNutrition, TrackerWorkout, TrackerMeditation:
+	case TrackerNone, TrackerNutrition, TrackerWorkout, TrackerMeditation, TrackerJournal:
 		return true
 	}
 	return false
@@ -235,9 +236,9 @@ type DefaultTask struct {
 
 func f(v float64) *float64 { return &v }
 
-// DefaultTasks returns the canonical six plus one optional extra, used as the
+// DefaultTasks returns the canonical six plus the optional extras, used as the
 // starting template for a new program. Every field is editable afterwards, and
-// the optional task can simply be deleted.
+// an optional task can be hidden from settings without losing its history.
 func DefaultTasks() []DefaultTask {
 	return []DefaultTask{
 		{
@@ -282,6 +283,12 @@ func DefaultTasks() []DefaultTask {
 			Detail: "Optional. Log how long and where — this never fails the challenge.",
 			Icon:   "lotus", Kind: KindCheck, Required: false,
 			Tracker: TrackerMeditation,
+		},
+		{
+			Key: "journal", Title: "Journal",
+			Detail: "Optional. Type an entry or upload a page — this never fails the challenge.",
+			Icon:   "pen", Kind: KindCheck, Required: false,
+			Tracker: TrackerJournal,
 		},
 	}
 }

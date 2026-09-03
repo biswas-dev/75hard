@@ -295,10 +295,23 @@ func TestMeditationIsOptionalByDefault(t *testing.T) {
 		t.Fatal("no meditation task in the default template")
 	}
 
-	// The canonical six must all still be required.
+}
+
+func TestJournalIsOptionalByDefault(t *testing.T) {
+	var found bool
 	for _, task := range DefaultTasks() {
-		if task.Key != "meditation" && !task.Required {
-			t.Errorf("%q became optional; the canonical rules are not negotiable", task.Key)
+		if task.Key != "journal" {
+			continue
 		}
+		found = true
+		if task.Required {
+			t.Error("journal is required; missing it must never fail a run")
+		}
+		if task.Tracker != TrackerJournal {
+			t.Errorf("tracker = %q, want %q", task.Tracker, TrackerJournal)
+		}
+	}
+	if !found {
+		t.Fatal("no journal task in the default template")
 	}
 }

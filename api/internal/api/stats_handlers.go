@@ -133,7 +133,8 @@ func (s *Server) HandleGetStats(w http.ResponseWriter, r *http.Request) {
 		                               WHERE te2.day_id = d2.id AND te2.program_task_id = pt.id
 		                                 AND te2.completed_at IS NOT NULL))
 		        ELSE 0 END)
-		FROM program_tasks pt WHERE pt.program_id = ? ORDER BY pt.sort_order, pt.id`,
+		FROM program_tasks pt WHERE pt.program_id = ? AND pt.hidden = 0
+		 ORDER BY pt.sort_order, pt.id`,
 		programID, programID, programID)
 	if err == nil {
 		defer trows.Close()

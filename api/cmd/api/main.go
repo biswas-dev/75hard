@@ -75,7 +75,7 @@ func main() {
 	// AIV_* is the vision chain (food photos). It is separate because a
 	// provider's cheap text model and its vision model are different models.
 	aiSvc := aifeatures.New(nil)
-	textChain, err := ai.ChainFromEnv()
+	textChain, err := boundedChain("AI")
 	if err != nil {
 		if errors.Is(err, ai.ErrNoProviders) {
 			logger.Info("ai features disabled: no AI_1_PROVIDER configured")
@@ -87,14 +87,24 @@ func main() {
 			logger.Warn("ai provider failed, falling through",
 				zap.String("chain", "text"), zap.String("provider", provider), zap.Error(err))
 		})
+		textChain.OnRetry(func(provider string, attempt int, delay time.Duration, err error) {
+			logger.Warn("ai provider retrying",
+				zap.String("chain", "text"), zap.String("provider", provider),
+				zap.Int("attempt", attempt), zap.Duration("in", delay), zap.Error(err))
+		})
 
-		visionChain, verr := ai.ChainFromEnvPrefix("AIV")
+		visionChain, verr := boundedChain("AIV")
 		if verr != nil {
 			// No dedicated vision chain: photo requests reuse the text chain,
 			// which works when the primary model is multimodal.
 			visionChain = nil
 			logger.Info("no dedicated vision chain; photo analysis will use the text chain")
 		} else {
+			visionChain.OnRetry(func(provider string, attempt int, delay time.Duration, err error) {
+				logger.Warn("ai provider retrying",
+					zap.String("chain", "vision"), zap.String("provider", provider),
+					zap.Int("attempt", attempt), zap.Duration("in", delay), zap.Error(err))
+			})
 			visionChain.OnFallback(func(provider string, err error) {
 				logger.Warn("ai provider failed, falling through",
 					zap.String("chain", "vision"), zap.String("provider", provider), zap.Error(err))
@@ -335,6 +345,19 @@ func main() {
 		estimator.Start(estimatorCtx)
 	}
 
+	// Strava activities arrive without telling us, so connected accounts are
+	// polled. Without this, a walk only appears when somebody opens settings
+	// and presses sync, which is not something anyone remembers to do.
+	var stravaSyncer *api.StravaSyncer
+	if cfg.StravaEnabled() {
+		stravaSyncer = api.NewStravaSyncer(server, cfg.StravaSyncInterval)
+		syncCtx, stopSync := context.WithCancel(context.Background())
+		defer stopSync()
+		stravaSyncer.Start(syncCtx)
+		logger.Info("strava auto-sync enabled",
+			zap.Duration("every", stravaSyncer.Interval()))
+	}
+
 	go func() {
 		logger.Info("listening", zap.String("addr", srv.Addr))
 		if err := srv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
@@ -352,12 +375,37 @@ func main() {
 	if estimator != nil {
 		estimator.Stop()
 	}
+	if stravaSyncer != nil {
+		stravaSyncer.Stop()
+	}
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 	if err := srv.Shutdown(ctx); err != nil {
 		logger.Error("graceful shutdown failed", zap.Error(err))
 	}
 	logger.Info("stopped")
+}
+
+// boundedChain builds a provider chain with a per-slot timeout that leaves
+// room for the fallback.
+//
+// go-ai's default per-request timeout is 150s. Inside the app's 3-minute call
+// budget that means one unresponsive provider can consume almost everything,
+// and the chain never reaches a backup — which is exactly how food estimation
+// broke when NVIDIA stopped responding. A slot bounded well below the budget
+// keeps the fallback reachable. An explicit AI_n_TIMEOUT_SECONDS still wins.
+func boundedChain(prefix string) (*ai.Chain, error) {
+	slots := ai.SlotsFromEnv(prefix)
+	for i := range slots {
+		if slots[i].Timeout == 0 {
+			slots[i].Timeout = api.AISlotTimeout
+		}
+	}
+	chain, err := ai.NewChainFromSlots(slots...)
+	if err != nil {
+		return nil, err
+	}
+	return chain.WithRetry(ai.RetryFromEnv(prefix)), nil
 }
 
 // seedAdmin creates the configured admin account on first boot so a fresh

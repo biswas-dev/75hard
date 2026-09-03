@@ -176,6 +176,13 @@ jobs:
           STRAVA_REDIRECT_URL=https://75hard.biswas.me/api/strava/callback
           STRAVA_SUCCESS_URL=https://75hard.biswas.me/settings?strava=connected
           STRAVA_ERROR_URL=https://75hard.biswas.me/settings?strava=error
+          STRAVA_SYNC_MINUTES=120
+          # One provider must not be able to spend the whole call budget: go-ai
+          # keeps a reserve for untried slots, and a 150s default left it none.
+          AI_1_TIMEOUT_SECONDS=45
+          AI_2_TIMEOUT_SECONDS=45
+          AIV_1_TIMEOUT_SECONDS=45
+          AIV_2_TIMEOUT_SECONDS=45
           ENVEOF
           # Strip the heredoc's YAML indentation, or every value is prefixed
           # with spaces and the app reads garbage.

@@ -58,6 +58,9 @@ type Config struct {
 	// integration can be exercised end to end against a stub.
 	StravaAPIBase  string
 	StravaTokenURL string
+	// StravaSyncInterval is how often connected accounts are polled. Zero
+	// uses the default; anything under the floor is raised to it.
+	StravaSyncInterval time.Duration
 
 	// Seeded on first boot so a fresh deploy is usable immediately.
 	AdminEmail    string
@@ -116,6 +119,7 @@ func Load() *Config {
 		StravaErrorURL:     getEnv("STRAVA_ERROR_URL", "http://localhost:5175/settings?strava=error"),
 		StravaAPIBase:      getEnv("STRAVA_API_BASE", ""),
 		StravaTokenURL:     getEnv("STRAVA_TOKEN_URL", ""),
+		StravaSyncInterval: time.Duration(getEnvInt("STRAVA_SYNC_MINUTES", 120)) * time.Minute,
 
 		AdminEmail:    getEnv("ADMIN_EMAIL", ""),
 		AdminPassword: getEnv("ADMIN_PASSWORD", ""),
