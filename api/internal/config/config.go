@@ -62,6 +62,11 @@ type Config struct {
 	// uses the default; anything under the floor is raised to it.
 	StravaSyncInterval time.Duration
 
+	// EncryptionKey protects third-party API keys at rest. Without it, a
+	// person cannot store their own provider keys — which is a feature being
+	// unavailable, not a startup failure.
+	EncryptionKey string
+
 	// Seeded on first boot so a fresh deploy is usable immediately.
 	AdminEmail    string
 	AdminPassword string
@@ -120,6 +125,8 @@ func Load() *Config {
 		StravaAPIBase:      getEnv("STRAVA_API_BASE", ""),
 		StravaTokenURL:     getEnv("STRAVA_TOKEN_URL", ""),
 		StravaSyncInterval: time.Duration(getEnvInt("STRAVA_SYNC_MINUTES", 120)) * time.Minute,
+
+		EncryptionKey: getEnv("ENCRYPTION_KEY", ""),
 
 		AdminEmail:    getEnv("ADMIN_EMAIL", ""),
 		AdminPassword: getEnv("ADMIN_PASSWORD", ""),

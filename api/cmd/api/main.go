@@ -319,6 +319,17 @@ func main() {
 				r.Get("/ai/status", server.HandleAIStatus)
 				// What credit is left, for providers that publish it.
 				r.Get("/ai/balance", server.HandleAIBalance)
+			})
+
+			// Provider keys are configuration, not model calls, so they sit
+			// outside the AI rate limit and its long timeout.
+			r.Get("/ai/keys", server.HandleListAIKeys)
+			r.Put("/ai/keys/{slot}", server.HandleSaveAIKey)
+			r.Delete("/ai/keys/{slot}", server.HandleDeleteAIKey)
+
+			r.Group(func(r chi.Router) {
+				r.Use(api.RateLimitMiddleware(20))
+				r.Use(middleware.Timeout(aiRequestTimeout))
 				r.Post("/ai/food", server.HandleAnalyzeFood)
 				r.Post("/ai/recipes", server.HandleSuggestRecipes)
 				r.Post("/ai/plan", server.HandleBuildPlan)

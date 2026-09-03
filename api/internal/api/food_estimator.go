@@ -186,7 +186,7 @@ func (e *FoodEstimator) process(ctx context.Context, job estimateJob) {
 		return
 	}
 
-	result, meta, err := s.ai.EstimateFood(callCtx, image, "image/jpeg", job.hint)
+	result, meta, err := s.aiForUser(callCtx, job.userID).EstimateFood(callCtx, image, "image/jpeg", job.hint)
 	s.recordAIRun(callCtx, job.userID, aifeatures.FeatureFoodPhoto, meta, err)
 	if err != nil {
 		s.log.Warn("food estimate failed",
@@ -290,9 +290,9 @@ func (s *Server) HandleRetryEstimate(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	userID := UserID(ctx)
 
-	if s.food == nil || !s.ai.Enabled() {
+	if s.food == nil || !s.aiForUser(ctx, userID).Enabled() {
 		respondError(w, http.StatusServiceUnavailable,
-			"AI features are not configured on this server", "ai_disabled")
+			"add an AI provider key in settings to use this", "ai_no_key")
 		return
 	}
 

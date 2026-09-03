@@ -1,4 +1,5 @@
 import type {
+  AIKeys,
   AIStatus,
   APIToken,
   AuthConfig,
@@ -379,6 +380,24 @@ class ApiClient {
   /** Credit left with providers that publish it. Cached server-side. */
   aiBalance() {
     return this.request<{ balances: ProviderBalance[]; cached: boolean }>('/api/ai/balance')
+  }
+
+  aiKeys() {
+    return this.request<AIKeys>('/api/ai/keys')
+  }
+
+  saveAIKey(
+    slot: number,
+    body: { provider: string; model: string; base_url?: string; api_key?: string; enabled?: boolean },
+  ) {
+    return this.request<{ slots: AIKeys['slots'] }>(`/api/ai/keys/${slot}`, {
+      method: 'PUT',
+      body: JSON.stringify(body),
+    })
+  }
+
+  deleteAIKey(slot: number) {
+    return this.request<{ slots: AIKeys['slots'] }>(`/api/ai/keys/${slot}`, { method: 'DELETE' })
   }
 
   stravaStatus() {

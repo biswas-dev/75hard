@@ -42,13 +42,18 @@ const DailyAILimit = 40
 // HandleAIStatus reports whether the AI features are available, so the SPA can
 // hide the buttons rather than offering something that will fail.
 func (s *Server) HandleAIStatus(w http.ResponseWriter, r *http.Request) {
-	used, _ := s.aiCallsToday(r.Context(), UserID(r.Context()))
+	ctx := r.Context()
+	userID := UserID(ctx)
+	used, _ := s.aiCallsToday(ctx, userID)
+	// Reported for this person: they may be running on their own providers,
+	// on the instance's, or on none at all.
+	svc := s.aiForUser(ctx, userID)
 	respondJSON(w, http.StatusOK, map[string]any{
-		"enabled":   s.ai.Enabled(),
-		"providers": s.ai.Providers(),
+		"enabled":   svc.Enabled(),
+		"providers": svc.Providers(),
 		// Reported separately because photo analysis can run on a different
 		// chain than the text features.
-		"vision_providers": s.ai.VisionProviders(),
+		"vision_providers": svc.VisionProviders(),
 		"used_today":       used,
 		"daily_limit":      DailyAILimit,
 	})
@@ -72,7 +77,7 @@ func (s *Server) HandleAnalyzeFood(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	userID := UserID(ctx)
 
-	if !s.aiReady(w) {
+	if !s.aiReady(w, r) {
 		return
 	}
 
@@ -115,7 +120,7 @@ func (s *Server) HandleAnalyzeFood(w http.ResponseWriter, r *http.Request) {
 	callCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), aiCallTimeout)
 	defer cancel()
 
-	estimate, meta, err := s.ai.EstimateFood(callCtx, image, "image/jpeg", req.Hint)
+	estimate, meta, err := s.aiForUser(ctx, userID).EstimateFood(callCtx, image, "image/jpeg", req.Hint)
 	if err != nil {
 		s.recordAIRun(ctx, userID, aifeatures.FeatureFoodPhoto, meta, err)
 		s.respondAIError(w, err)
@@ -147,7 +152,7 @@ func (s *Server) HandleSuggestRecipes(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	userID := UserID(ctx)
 
-	if !s.aiReady(w) {
+	if !s.aiReady(w, r) {
 		return
 	}
 
@@ -209,7 +214,7 @@ func (s *Server) HandleSuggestRecipes(w http.ResponseWriter, r *http.Request) {
 	callCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), aiCallTimeout)
 	defer cancel()
 
-	recipes, meta, err := s.ai.SuggestRecipes(callCtx, air)
+	recipes, meta, err := s.aiForUser(ctx, userID).SuggestRecipes(callCtx, air)
 	if err != nil {
 		s.recordAIRun(ctx, userID, aifeatures.FeatureRecipes, meta, err)
 		s.respondAIError(w, err)
@@ -240,7 +245,7 @@ func (s *Server) HandleBuildPlan(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	userID := UserID(ctx)
 
-	if !s.aiReady(w) {
+	if !s.aiReady(w, r) {
 		return
 	}
 
@@ -265,7 +270,7 @@ func (s *Server) HandleBuildPlan(w http.ResponseWriter, r *http.Request) {
 	callCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), aiCallTimeout)
 	defer cancel()
 
-	plan, meta, err := s.ai.BuildPlan(callCtx, history)
+	plan, meta, err := s.aiForUser(ctx, userID).BuildPlan(callCtx, history)
 	if err != nil {
 		s.recordAIRun(ctx, userID, aifeatures.FeaturePlan, meta, err)
 		s.respondAIError(w, err)
@@ -286,7 +291,7 @@ func (s *Server) HandleCoachNote(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	userID := UserID(ctx)
 
-	if !s.aiReady(w) {
+	if !s.aiReady(w, r) {
 		return
 	}
 
@@ -311,7 +316,7 @@ func (s *Server) HandleCoachNote(w http.ResponseWriter, r *http.Request) {
 	callCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), aiCallTimeout)
 	defer cancel()
 
-	note, meta, err := s.ai.DailyNote(callCtx, history)
+	note, meta, err := s.aiForUser(ctx, userID).DailyNote(callCtx, history)
 	if err != nil {
 		s.recordAIRun(ctx, userID, aifeatures.FeatureCoach, meta, err)
 		s.respondAIError(w, err)
@@ -324,13 +329,19 @@ func (s *Server) HandleCoachNote(w http.ResponseWriter, r *http.Request) {
 
 // ---- helpers ----
 
-func (s *Server) aiReady(w http.ResponseWriter) bool {
-	if !s.ai.Enabled() {
-		respondError(w, http.StatusServiceUnavailable,
-			"AI features are not configured on this server", "ai_disabled")
-		return false
+// aiReady reports whether this caller has a usable provider chain.
+//
+// Judged per person, not per server: somebody with no key of their own is not
+// looking at a misconfigured instance, they are looking at a feature that needs
+// a key adding in settings, and the message should say so.
+func (s *Server) aiReady(w http.ResponseWriter, r *http.Request) bool {
+	ctx := r.Context()
+	if s.aiForUser(ctx, UserID(ctx)).Enabled() {
+		return true
 	}
-	return true
+	respondError(w, http.StatusServiceUnavailable,
+		"add an AI provider key in settings to use this", "ai_no_key")
+	return false
 }
 
 func (s *Server) respondAIError(w http.ResponseWriter, err error) {

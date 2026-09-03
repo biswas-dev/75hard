@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { AiBalanceCard } from '../components/AiBalanceCard'
+import { AiKeysCard } from '../components/AiKeysCard'
 import { ApiTokensCard } from '../components/ApiTokensCard'
 import { StravaCard } from '../components/StravaCard'
 import { api } from '../lib/api'
@@ -203,6 +204,8 @@ export function Settings() {
           )}
         </section>
       )}
+
+      <AiKeysCard />
 
       <AiBalanceCard />
 

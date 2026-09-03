@@ -450,3 +450,36 @@ export interface ProviderBalance {
   error?: string
   checked_at: string
 }
+
+// ---- per-account AI providers ----
+
+export interface AISlot {
+  slot: number
+  provider: string
+  model: string
+  base_url?: string
+  /** Last four characters of the stored key. The key itself never leaves the server. */
+  key_hint: string
+  enabled: boolean
+  has_key: boolean
+}
+
+export interface ProviderInfo {
+  name: string
+  label: string
+  suggested_model: string
+  vision_model?: string
+  free: boolean
+  publishes_balance: boolean
+  signup_url: string
+}
+
+export interface AIKeys {
+  slots: AISlot[]
+  using_own_keys: boolean
+  /** Whether this account may fall back to the instance's own keys. */
+  server_fallback: boolean
+  /** False when the server has no encryption key, so nothing can be stored. */
+  configurable: boolean
+  providers: ProviderInfo[]
+}

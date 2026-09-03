@@ -14,6 +14,8 @@
 #   H75_ADMIN_PASSWORD   seeded admin password (optional)
 #   GOOGLE_CLIENT_ID / GOOGLE_CLIENT_SECRET               (optional)
 #   LOGIN_GITHUB_CLIENT_ID / LOGIN_GITHUB_CLIENT_SECRET   (optional)
+#   H75_ENCRYPTION_KEY   Encrypts per-account provider API keys at rest.
+#     Rotating it makes every stored key unreadable and they must be re-entered.
 #   STRAVA_CLIENT_ID / STRAVA_CLIENT_SECRET               (optional)
 #     The callback domain registered with the Strava app must match the host
 #     in STRAVA_REDIRECT_URL below, or the token exchange is rejected.
@@ -132,6 +134,7 @@ jobs:
           GOOGLE_CLIENT_SECRET: ${{ secrets.GOOGLE_CLIENT_SECRET }}
           LOGIN_GITHUB_CLIENT_ID: ${{ secrets.LOGIN_GITHUB_CLIENT_ID }}
           LOGIN_GITHUB_CLIENT_SECRET: ${{ secrets.LOGIN_GITHUB_CLIENT_SECRET }}
+          H75_ENCRYPTION_KEY: ${{ secrets.H75_ENCRYPTION_KEY }}
           NVIDIA_API_KEY: ${{ secrets.NVIDIA_API_KEY }}
           DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}
           STRAVA_CLIENT_ID: ${{ secrets.STRAVA_CLIENT_ID }}
@@ -183,6 +186,10 @@ jobs:
           STRAVA_SUCCESS_URL=https://75hard.biswas.me/settings?strava=connected
           STRAVA_ERROR_URL=https://75hard.biswas.me/settings?strava=error
           STRAVA_SYNC_MINUTES=120
+          # Protects provider keys people store for themselves. Rotating it
+          # makes every stored key unreadable, which is why it is a secret of
+          # its own rather than derived from the JWT signing secret.
+          ENCRYPTION_KEY=${H75_ENCRYPTION_KEY}
           # One provider must not be able to spend the whole call budget: go-ai
           # keeps a reserve for untried slots, and a 150s default left it none.
           AI_1_TIMEOUT_SECONDS=60

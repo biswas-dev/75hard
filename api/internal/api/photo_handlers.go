@@ -351,7 +351,7 @@ func (s *Server) queueFoodEstimate(
 	}
 
 	status := "pending"
-	if s.food == nil || !s.ai.Enabled() {
+	if s.food == nil || !s.aiForUser(ctx, userID).Enabled() {
 		// No estimator configured: the meal is still logged and tagged, it
 		// just stays a manual entry to be filled in by hand.
 		status = ""

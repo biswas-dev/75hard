@@ -33,12 +33,17 @@ type ProviderBalance struct {
 // rate limited like any other, and polling it on every page load would spend
 // request budget to tell somebody a number that has not moved.
 type balanceCache struct {
-	mu        sync.Mutex
-	entries   map[string]ProviderBalance
-	refreshed time.Time
+	mu sync.Mutex
+	// Keyed by user, because the key being asked about is now theirs. One
+	// shared entry would show somebody another person's remaining credit.
+	entries   map[int64]map[string]ProviderBalance
+	refreshed map[int64]time.Time
 }
 
-var balances = balanceCache{entries: map[string]ProviderBalance{}}
+var balances = balanceCache{
+	entries:   map[int64]map[string]ProviderBalance{},
+	refreshed: map[int64]time.Time{},
+}
 
 // BalanceCacheTTL is how long a reading is reused.
 const BalanceCacheTTL = 10 * time.Minute
@@ -51,11 +56,13 @@ const BalanceCacheTTL = 10 * time.Minute
 func (s *Server) HandleAIBalance(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 
+	userID := UserID(ctx)
+
 	balances.mu.Lock()
-	fresh := time.Since(balances.refreshed) < BalanceCacheTTL && len(balances.entries) > 0
-	if fresh {
-		out := make([]ProviderBalance, 0, len(balances.entries))
-		for _, b := range balances.entries {
+	if mine := balances.entries[userID]; len(mine) > 0 &&
+		time.Since(balances.refreshed[userID]) < BalanceCacheTTL {
+		out := make([]ProviderBalance, 0, len(mine))
+		for _, b := range mine {
 			out = append(out, b)
 		}
 		balances.mu.Unlock()
@@ -70,17 +77,25 @@ func (s *Server) HandleAIBalance(w http.ResponseWriter, r *http.Request) {
 	fetchCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 15*time.Second)
 	defer cancel()
 
-	if key := deepseekKey(); key != "" {
-		b := fetchDeepSeekBalance(fetchCtx, key)
-		out = append(out, b)
+	// The caller's own key first: the balance has to belong to whoever is
+	// looking, or somebody sees another person's remaining credit.
+	if key := s.userProviderKey(ctx, UserID(ctx), "deepseek"); key != "" {
+		out = append(out, fetchDeepSeekBalance(fetchCtx, key))
+	} else if s.serverKeysAllowed(ctx, UserID(ctx)) {
+		if key := deepseekKey(); key != "" {
+			out = append(out, fetchDeepSeekBalance(fetchCtx, key))
+		}
 	}
 
 	balances.mu.Lock()
+	if balances.entries[userID] == nil {
+		balances.entries[userID] = map[string]ProviderBalance{}
+	}
 	for _, b := range out {
-		balances.entries[b.Provider] = b
+		balances.entries[userID][b.Provider] = b
 	}
 	if len(out) > 0 {
-		balances.refreshed = time.Now()
+		balances.refreshed[userID] = time.Now()
 	}
 	balances.mu.Unlock()
 
@@ -166,6 +181,30 @@ func fetchDeepSeekBalance(ctx context.Context, key string) ProviderBalance {
 // so the figure someone sees reflects what they have just spent.
 func invalidateBalanceCache() {
 	balances.mu.Lock()
-	balances.refreshed = time.Time{}
+	balances.refreshed = map[int64]time.Time{}
 	balances.mu.Unlock()
+}
+
+// userProviderKey returns a person's stored key for one provider, decrypted.
+//
+// Empty when they have none, when the server cannot decrypt, or when the key
+// was encrypted under a secret that has since changed — all of which mean the
+// same thing to the caller: there is no usable key here.
+func (s *Server) userProviderKey(ctx context.Context, userID int64, provider string) string {
+	cipher, err := s.cipher()
+	if err != nil {
+		return ""
+	}
+	var enc string
+	if err := s.db.QueryRowContext(ctx,
+		`SELECT api_key_enc FROM user_ai_providers
+		  WHERE user_id = ? AND provider = ? AND enabled = 1 AND api_key_enc != ''
+		  ORDER BY slot LIMIT 1`, userID, provider).Scan(&enc); err != nil {
+		return ""
+	}
+	key, err := cipher.Decrypt(enc)
+	if err != nil {
+		return ""
+	}
+	return key
 }
