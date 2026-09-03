@@ -33,7 +33,10 @@ RUN CGO_ENABLED=0 GOOS=linux GOARCH=$TARGETARCH go build \
       -ldflags="-s -w" -o /out/admin ./cmd/admin
 
 FROM alpine:3.20
-RUN apk add --no-cache ca-certificates tzdata wget && \
+# poppler-utils supplies pdftoppm, which renders a scanned journal page to an
+# image so a vision model can read the handwriting on it. Without it an
+# uploaded page is still stored, just not transcribed or searchable.
+RUN apk add --no-cache ca-certificates tzdata wget poppler-utils && \
     addgroup -g 1001 app && adduser -D -u 1001 -G app app
 WORKDIR /app
 COPY --from=api /out/75hard /app/75hard

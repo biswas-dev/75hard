@@ -323,6 +323,14 @@ func main() {
 
 			// Provider keys are configuration, not model calls, so they sit
 			// outside the AI rate limit and its long timeout.
+			// Journal. Optional, and never part of completing a day.
+			r.Get("/journal", server.HandleListJournal)
+			r.Post("/journal", server.HandleCreateJournal)
+			r.Post("/journal/upload", server.HandleUploadJournal)
+			r.Patch("/journal/{entryID}", server.HandleUpdateJournal)
+			r.Delete("/journal/{entryID}", server.HandleDeleteJournal)
+			r.Get("/journal/{entryID}/file", server.HandleServeJournalFile)
+
 			r.Get("/ai/keys", server.HandleListAIKeys)
 			r.Put("/ai/keys/{slot}", server.HandleSaveAIKey)
 			r.Delete("/ai/keys/{slot}", server.HandleDeleteAIKey)
@@ -361,6 +369,12 @@ func main() {
 	// Strava activities arrive without telling us, so connected accounts are
 	// polled. Without this, a walk only appears when somebody opens settings
 	// and presses sync, which is not something anyone remembers to do.
+	// Handwritten journal pages are transcribed off the request path, the same
+	// way food photos are priced: rendering a page and showing it to a vision
+	// model takes far too long to hold an upload open for.
+	journalParser := api.NewJournalParser(server, 1, 32)
+	server.SetJournalParser(journalParser)
+
 	var stravaSyncer *api.StravaSyncer
 	if cfg.StravaEnabled() {
 		stravaSyncer = api.NewStravaSyncer(server, cfg.StravaSyncInterval)
@@ -370,6 +384,10 @@ func main() {
 		logger.Info("strava auto-sync enabled",
 			zap.Duration("every", stravaSyncer.Interval()))
 	}
+
+	journalCtx, stopJournal := context.WithCancel(context.Background())
+	defer stopJournal()
+	journalParser.Start(journalCtx)
 
 	go func() {
 		logger.Info("listening", zap.String("addr", srv.Addr))
@@ -391,6 +409,7 @@ func main() {
 	if stravaSyncer != nil {
 		stravaSyncer.Stop()
 	}
+	journalParser.Stop()
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 	if err := srv.Shutdown(ctx); err != nil {

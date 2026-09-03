@@ -510,3 +510,45 @@ func mediaTypeOr(mt string) string {
 	}
 	return mt
 }
+
+const handwritingSystemPrompt = `You transcribe a photographed or scanned page of handwriting.
+
+Return the text you can read, and nothing else. No preamble, no commentary, no
+description of the page or the handwriting.
+
+Rules:
+- Transcribe exactly what is written, including spelling and punctuation as written.
+- Keep line and paragraph breaks where they clearly exist.
+- Where a word is genuinely illegible, write [?] in its place rather than guessing.
+- If the page contains no handwriting at all, return an empty string.
+
+You are reading somebody's private journal. Transcribe it; do not summarise it,
+comment on it, or respond to anything it says.`
+
+// ReadHandwriting transcribes one rendered page.
+//
+// Deliberately not JSON: a page of prose is what is wanted, and wrapping it in
+// a structure invites the model to summarise rather than transcribe. The
+// prompt says so explicitly, because a journal is the one place where a model
+// helpfully improving on the input would be worst.
+func (s *Service) ReadHandwriting(ctx context.Context, page []byte, mediaType string) (string, Meta, error) {
+	if !s.Enabled() {
+		return "", Meta{}, ErrDisabled
+	}
+
+	resp, err := s.vision().Complete(ctx, ai.Request{
+		System: handwritingSystemPrompt,
+		Messages: []ai.Message{
+			ai.UserImage("Transcribe this page.", mediaTypeOr(mediaType), page),
+		},
+		// A dense page of handwriting is a lot of text, and a reasoning model
+		// spends part of this budget thinking before it writes any of it.
+		MaxTokens: 6000,
+	})
+	if err != nil {
+		return "", Meta{}, err
+	}
+
+	text := strings.TrimSpace(resp.Text)
+	return text, meta(resp, hashBytes(page, ""), text), nil
+}

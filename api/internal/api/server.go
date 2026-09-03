@@ -20,6 +20,9 @@ type Server struct {
 	// food, when set, estimates food photos off the request path. Nil is a
 	// valid state: without it a food photo is simply saved without numbers.
 	food *FoodEstimator
+	// journalParser, when set, transcribes handwritten pages. Nil means an
+	// uploaded page is stored and simply not searchable.
+	journalParser *JournalParser
 }
 
 // NewServer builds a Server.
@@ -31,3 +34,6 @@ func NewServer(database *db.DB, cfg *config.Config, log *zap.Logger, photos *pho
 // SetFoodEstimator attaches the background estimator. Separate from NewServer
 // because the estimator needs the server it runs against.
 func (s *Server) SetFoodEstimator(e *FoodEstimator) { s.food = e }
+
+// SetJournalParser attaches the background transcriber.
+func (s *Server) SetJournalParser(p *JournalParser) { s.journalParser = p }

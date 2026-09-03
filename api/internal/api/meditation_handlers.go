@@ -15,14 +15,18 @@ import (
 
 // Meditation is one logged sitting.
 type Meditation struct {
-	ID        int64      `json:"id"`
-	DayID     int64      `json:"day_id"`
-	Minutes   int        `json:"minutes"`
-	Source    string     `json:"source"`
-	Style     string     `json:"style"`
-	Notes     string     `json:"notes"`
-	StartedAt *time.Time `json:"started_at,omitempty"`
-	CreatedAt time.Time  `json:"created_at"`
+	ID      int64  `json:"id"`
+	DayID   int64  `json:"day_id"`
+	Minutes int    `json:"minutes"`
+	Source  string `json:"source"`
+	Style   string `json:"style"`
+	Notes   string `json:"notes"`
+	// Reflection is a note about the sitting itself, written while closing it
+	// off. Kept apart from the journal because a line about how the ten
+	// minutes went and a journal entry are different kinds of writing.
+	Reflection string     `json:"reflection"`
+	StartedAt  *time.Time `json:"started_at,omitempty"`
+	CreatedAt  time.Time  `json:"created_at"`
 }
 
 // MeditationStyles are the shapes a sitting can take. Unknown values fall back
@@ -31,11 +35,12 @@ type Meditation struct {
 var MeditationStyles = []string{"guided", "unguided", "breathwork", "body_scan", "walking", "other"}
 
 type createMeditationRequest struct {
-	DayNumber *int   `json:"day_number"`
-	Minutes   int    `json:"minutes"`
-	Source    string `json:"source"`
-	Style     string `json:"style"`
-	Notes     string `json:"notes"`
+	DayNumber  *int   `json:"day_number"`
+	Minutes    int    `json:"minutes"`
+	Source     string `json:"source"`
+	Style      string `json:"style"`
+	Notes      string `json:"notes"`
+	Reflection string `json:"reflection"`
 	// When set, logging a sitting also ticks the meditation task, so one
 	// action does both.
 	TaskID *int64 `json:"task_id"`
@@ -70,10 +75,11 @@ func (s *Server) HandleCreateMeditation(w http.ResponseWriter, r *http.Request) 
 	}
 
 	res, err := s.db.ExecContext(ctx, `
-		INSERT INTO meditation_sessions (user_id, day_id, minutes, source, style, notes)
-		VALUES (?, ?, ?, ?, ?, ?)`,
+		INSERT INTO meditation_sessions (user_id, day_id, minutes, source, style, notes, reflection)
+		VALUES (?, ?, ?, ?, ?, ?, ?)`,
 		userID, dayID, req.Minutes,
-		strings.TrimSpace(req.Source), meditationStyle(req.Style), strings.TrimSpace(req.Notes))
+		strings.TrimSpace(req.Source), meditationStyle(req.Style),
+		strings.TrimSpace(req.Notes), strings.TrimSpace(req.Reflection))
 	if err != nil {
 		s.log.Error("insert meditation", zap.Error(err))
 		respondError(w, http.StatusInternalServerError, "could not log meditation", "internal")
@@ -164,13 +170,13 @@ func (s *Server) creditMeditationTask(r *http.Request, programID, dayID, taskID 
 
 func (s *Server) meditationByID(ctx context.Context, id int64) (Meditation, error) {
 	return scanMeditation(s.db.QueryRowContext(ctx, `
-		SELECT id, day_id, minutes, source, style, notes, started_at, created_at
+		SELECT id, day_id, minutes, source, style, notes, reflection, started_at, created_at
 		  FROM meditation_sessions WHERE id = ?`, id))
 }
 
 func (s *Server) meditationsForDay(ctx context.Context, dayID int64) ([]Meditation, error) {
 	rows, err := s.db.QueryContext(ctx, `
-		SELECT id, day_id, minutes, source, style, notes, started_at, created_at
+		SELECT id, day_id, minutes, source, style, notes, reflection, started_at, created_at
 		  FROM meditation_sessions WHERE day_id = ? ORDER BY id`, dayID)
 	if err != nil {
 		return nil, err
@@ -191,7 +197,8 @@ func (s *Server) meditationsForDay(ctx context.Context, dayID int64) ([]Meditati
 func scanMeditation(row scanner) (Meditation, error) {
 	var m Meditation
 	var started sql.NullTime
-	err := row.Scan(&m.ID, &m.DayID, &m.Minutes, &m.Source, &m.Style, &m.Notes, &started, &m.CreatedAt)
+	err := row.Scan(&m.ID, &m.DayID, &m.Minutes, &m.Source, &m.Style, &m.Notes,
+		&m.Reflection, &started, &m.CreatedAt)
 	if started.Valid {
 		m.StartedAt = &started.Time
 	}

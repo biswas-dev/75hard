@@ -146,6 +146,40 @@ func (s *Store) Save(r io.Reader, userID int64, kind string, maxBytes int64) (*S
 	}, nil
 }
 
+// SaveDocument stores a file that is not an image, byte for byte.
+//
+// A journal page arrives as a PDF, and re-encoding it the way a photo is
+// re-encoded would destroy it. go-photo's KeepUnsupported path writes the
+// original under the same dated, path-safe naming rule, so a document and a
+// photograph are stored and addressed identically.
+func (s *Store) SaveDocument(r io.Reader, userID int64, kind, filename string, maxBytes int64) (*Saved, error) {
+	opt := s.opt
+	opt.MaxBytes = maxBytes
+	opt.KeepUnsupported = true
+
+	raw, err := io.ReadAll(io.LimitReader(r, maxBytes+1))
+	if err != nil {
+		return nil, err
+	}
+	if int64(len(raw)) > maxBytes {
+		return nil, gophoto.ErrTooLarge
+	}
+	doc, err := gophoto.Process(raw, filename, opt)
+	if err != nil {
+		return nil, err
+	}
+	saved, err := s.inner.SaveImage(doc, gophoto.Dated(strconv.FormatInt(userID, 10), kind))
+	if err != nil {
+		return nil, err
+	}
+	return &Saved{
+		RelPath: saved.RelPath,
+		Mime:    saved.ContentType,
+		Bytes:   saved.Bytes(),
+		SHA256:  saved.SHA256,
+	}, nil
+}
+
 // Open returns a reader for a stored path, rejecting anything that tries to
 // escape the root.
 func (s *Store) Open(rel string) (*os.File, error) { return s.inner.Open(rel) }
