@@ -2,12 +2,19 @@ import { useEffect, useState } from 'react'
 import { PhotoUpload } from '../components/PhotoUpload'
 import { AuthImage } from '../components/AuthImage'
 import { api } from '../lib/api'
-import type { FoodEstimate, Photo } from '../lib/types'
+import type { FoodEstimate, Meal, Photo } from '../lib/types'
 
 interface Props {
   dayNumber: number
   onClose: () => void
   onSaved: () => void
+  /**
+   * An existing meal to edit. Absent means a new one.
+   *
+   * Without this a meal was write-once: a wrong estimate, or one that arrived
+   * empty because the model timed out, could only be deleted and retyped.
+   */
+  meal?: Meal | null
 }
 
 interface DraftItem {
@@ -29,18 +36,39 @@ const emptyItem: DraftItem = { name: '', qty: '1', unit: 'serving', kcal: '', pr
  * When items are present the server sums them, so the totals shown here are a
  * preview of what it will store rather than a second source of truth.
  */
-export function MealSheet({ dayNumber, onClose, onSaved }: Props) {
-  const [name, setName] = useState('')
+export function MealSheet({ dayNumber, onClose, onSaved, meal }: Props) {
+  const editing = meal ?? null
+  const [name, setName] = useState(editing?.name ?? '')
   // Sent to the model with the photo, and not saved: it is context for the
   // estimate, not part of the meal record.
   const [detail, setDetail] = useState('')
-  const [slot, setSlot] = useState('lunch')
-  const [photo, setPhoto] = useState<Photo | null>(null)
+  const [slot, setSlot] = useState<Meal['slot']>(editing?.slot ?? 'lunch')
+  // When editing, the meal's existing photo has to be present or the
+  // "estimate from the photo" button never appears — which is exactly the
+  // case somebody is in when a meal was saved with no calories on it.
+  const [photo, setPhoto] = useState<Photo | null>(
+    editing && editing.photo_id
+      ? ({
+          id: editing.photo_id,
+          kind: 'food',
+          pose: '',
+          day_id: editing.day_id,
+          day_number: null,
+          caption: '',
+          width: 0,
+          height: 0,
+          bytes: 0,
+          taken_at: editing.eaten_at,
+          url: editing.photo_url ?? `/api/photos/${editing.photo_id}/file`,
+          thumb_url: editing.photo_url ?? `/api/photos/${editing.photo_id}/file?size=thumb`,
+        } as Photo)
+      : null,
+  )
   const [itemised, setItemised] = useState(false)
-  const [kcal, setKcal] = useState('')
-  const [protein, setProtein] = useState('')
-  const [carbs, setCarbs] = useState('')
-  const [fat, setFat] = useState('')
+  const [kcal, setKcal] = useState(editing ? String(editing.kcal || '') : '')
+  const [protein, setProtein] = useState(editing ? String(editing.protein_g || '') : '')
+  const [carbs, setCarbs] = useState(editing ? String(editing.carbs_g || '') : '')
+  const [fat, setFat] = useState(editing ? String(editing.fat_g || '') : '')
   const [items, setItems] = useState<DraftItem[]>([{ ...emptyItem }])
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
@@ -121,7 +149,7 @@ export function MealSheet({ dayNumber, onClose, onSaved }: Props) {
     setBusy(true)
     setError('')
     try {
-      await api.createMeal({
+      const body = {
         day_number: dayNumber,
         photo_id: photo?.id ?? null,
         name: name.trim(),
@@ -146,7 +174,13 @@ export function MealSheet({ dayNumber, onClose, onSaved }: Props) {
               carbs_g: num(carbs),
               fat_g: num(fat),
             }),
-      })
+      }
+
+      if (editing) {
+        await api.updateMeal(editing.id, body)
+      } else {
+        await api.createMeal(body)
+      }
       onSaved()
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Could not save the meal')
@@ -228,7 +262,7 @@ export function MealSheet({ dayNumber, onClose, onSaved }: Props) {
                 <button
                   key={s}
                   type="button"
-                  onClick={() => setSlot(s)}
+                  onClick={() => setSlot(s as Meal['slot'])}
                   className={`rounded-xl border py-2.5 text-sm capitalize transition ${
                     slot === s
                       ? 'border-flame-500 bg-flame-500/15 text-flame-400'

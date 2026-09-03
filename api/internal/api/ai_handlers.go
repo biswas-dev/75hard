@@ -18,12 +18,22 @@ import (
 // aiCallTimeout bounds the upstream model call. Detached from the request
 // context so a proxy giving up early cannot cancel a call already paid for,
 // but still bounded so a hung provider does not leak a goroutine forever.
-const aiCallTimeout = 3 * time.Minute
+const aiCallTimeout = 150 * time.Second
 
-// AISlotTimeout bounds one provider. Deliberately well under aiCallTimeout:
-// go-ai holds a reserve back for untried providers, but a per-slot timeout
-// close to the whole budget leaves that reserve nothing to work with.
-const AISlotTimeout = 45 * time.Second
+// AISlotTimeout bounds one provider.
+//
+// The whole budget has to fit inside the proxy's own read timeout, or the
+// caller gets a 504 while the backend is still working. With two slots and two
+// attempts each, 30s bounds the worst case at about two minutes, which leaves
+// the proxy room and means an unresponsive provider costs a minute rather than
+// the entire request.
+const AISlotTimeout = 30 * time.Second
+
+// AIMaxAttempts is tries per provider, including the first.
+//
+// Two, not three. A third attempt at a provider that has already failed twice
+// almost never succeeds, and the time is far better spent on the next one.
+const AIMaxAttempts = 2
 
 // DailyAILimit caps model calls per user per rolling 24 hours. Generous for
 // real use, low enough that a runaway client cannot spend the key.
@@ -374,7 +384,18 @@ func (s *Server) aiCacheGet(ctx context.Context, userID int64, feature, hash str
 // recordAIRun writes the ledger entry. It is both the audit trail and the
 // quota counter, so a failed call is recorded too — a provider erroring out
 // still consumed an attempt.
+//
+// The context is deliberately detached. This is written *after* a call that may
+// have taken minutes, and the caller's context is frequently already cancelled
+// by then — the proxy gave up, or the person closed the tab. Using it meant the
+// INSERT failed precisely when a failure had occurred, so every timeout went
+// unrecorded and the error table looked reassuringly empty while estimation was
+// failing on every attempt. That cost real debugging time.
 func (s *Server) recordAIRun(ctx context.Context, userID int64, feature string, meta aifeatures.Meta, callErr error) {
+	writeCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 10*time.Second)
+	defer cancel()
+	ctx = writeCtx
+
 	var msg string
 	if callErr != nil {
 		msg = callErr.Error()
@@ -382,6 +403,9 @@ func (s *Server) recordAIRun(ctx context.Context, userID int64, feature string, 
 			msg = msg[:500]
 		}
 	}
+	// A call has just been paid for, so any cached balance is now stale.
+	invalidateBalanceCache()
+
 	if _, err := s.db.ExecContext(ctx, `
 		INSERT INTO ai_runs (user_id, feature, provider, model, input_hash, result_json,
 		                     tokens_in, tokens_out, attempts, error)

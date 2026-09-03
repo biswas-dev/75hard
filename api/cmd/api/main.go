@@ -317,6 +317,8 @@ func main() {
 				// already paid for by then.
 				r.Use(middleware.Timeout(aiRequestTimeout))
 				r.Get("/ai/status", server.HandleAIStatus)
+				// What credit is left, for providers that publish it.
+				r.Get("/ai/balance", server.HandleAIBalance)
 				r.Post("/ai/food", server.HandleAnalyzeFood)
 				r.Post("/ai/recipes", server.HandleSuggestRecipes)
 				r.Post("/ai/plan", server.HandleBuildPlan)
@@ -405,7 +407,12 @@ func boundedChain(prefix string) (*ai.Chain, error) {
 	if err != nil {
 		return nil, err
 	}
-	return chain.WithRetry(ai.RetryFromEnv(prefix)), nil
+
+	policy := ai.RetryFromEnv(prefix)
+	if os.Getenv(prefix+"_MAX_ATTEMPTS") == "" {
+		policy.MaxAttempts = api.AIMaxAttempts
+	}
+	return chain.WithRetry(policy), nil
 }
 
 // seedAdmin creates the configured admin account on first boot so a fresh

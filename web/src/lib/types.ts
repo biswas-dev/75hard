@@ -441,3 +441,12 @@ export interface CreatedToken {
   secret: string
   discovery: TokenDiscovery
 }
+
+export interface ProviderBalance {
+  provider: string
+  currency: string
+  amount: number
+  available: boolean
+  error?: string
+  checked_at: string
+}

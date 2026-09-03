@@ -14,6 +14,7 @@ import type {
   Photo,
   Plan,
   Pose,
+  ProviderBalance,
   Program,
   ProgramTask,
   Recipe,
@@ -373,6 +374,11 @@ class ApiClient {
 
   revokeToken(id: number) {
     return this.request<{ ok: boolean }>(`/api/tokens/${id}`, { method: 'DELETE' })
+  }
+
+  /** Credit left with providers that publish it. Cached server-side. */
+  aiBalance() {
+    return this.request<{ balances: ProviderBalance[]; cached: boolean }>('/api/ai/balance')
   }
 
   stravaStatus() {

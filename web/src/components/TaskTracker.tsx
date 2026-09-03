@@ -1,13 +1,13 @@
 import { useEffect, useState } from 'react'
 import { api } from '../lib/api'
 import { PhotoUpload } from './PhotoUpload'
-import type { Day, Entry } from '../lib/types'
+import type { Day, Entry, Meal } from '../lib/types'
 
 interface Props {
   entry: Entry
   day: Day
   onChanged: () => void
-  onLogMeal: () => void
+  onLogMeal: (meal?: Meal) => void
 }
 
 /**
@@ -39,7 +39,7 @@ function NutritionTracker({
 }: {
   day: Day
   onChanged: () => void
-  onLogMeal: () => void
+  onLogMeal: (meal?: Meal) => void
   color: string
 }) {
   const { totals, meals } = day
@@ -86,7 +86,12 @@ function NutritionTracker({
         <ul className="divide-y divide-ink-800">
           {meals.map((meal) => (
             <li key={meal.id} className="flex items-center gap-3 py-2">
-              <span className="min-w-0 flex-1">
+              <button
+                type="button"
+                onClick={() => onLogMeal(meal)}
+                className="min-w-0 flex-1 text-left"
+                title="Edit this meal"
+              >
                 <span className="block truncate text-sm text-ink-200">
                   {meal.name || (meal.estimate_status === 'pending' ? 'Reading the photo…' : meal.slot)}
                 </span>
@@ -110,7 +115,7 @@ function NutritionTracker({
                   )}
                   {meal.estimate_status === '' && meal.source === 'ai' && ' · AI estimate'}
                 </span>
-              </span>
+              </button>
               {/* A pending estimate must not render as a real zero. */}
               <span className="shrink-0 font-mono text-sm text-ink-400">
                 {meal.estimate_status === 'pending' ? <PulseDots /> : Math.round(meal.kcal)}
@@ -141,7 +146,7 @@ function NutritionTracker({
         onUploaded={onChanged}
       />
 
-      <button className="btn-ghost w-full py-2 text-sm" onClick={onLogMeal}>
+      <button className="btn-ghost w-full py-2 text-sm" onClick={() => onLogMeal()}>
         + Log a meal in detail
       </button>
       <p className="text-center text-xs text-ink-600">

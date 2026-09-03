@@ -142,9 +142,15 @@ func (s *Service) EstimateFood(ctx context.Context, image []byte, mediaType, hin
 	}
 
 	resp, err := s.vision().Complete(ctx, ai.Request{
-		System:    foodSystemPrompt,
-		Messages:  []ai.Message{ai.UserImage(prompt, mediaType, image)},
-		MaxTokens: 1600,
+		System:   foodSystemPrompt,
+		Messages: []ai.Message{ai.UserImage(prompt, mediaType, image)},
+		// Generous on purpose. Several vision models are reasoning models:
+		// they spend tokens thinking before they answer, and that thinking
+		// comes out of the same budget. At 1600 a real photograph of a meal
+		// exhausted the allowance mid-thought and returned an empty completion
+		// with finish_reason "length" — which reads as a total failure, not as
+		// a budget problem, and sent every request on to the backup provider.
+		MaxTokens: 4000,
 		JSON:      true,
 	})
 	if err != nil {

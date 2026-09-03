@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import type { Day, Entry } from '../lib/types'
+import type { Day, Entry, Meal } from '../lib/types'
 import { TaskIcon } from './TaskIcon'
 import { TaskTracker } from './TaskTracker'
 
@@ -10,7 +10,7 @@ interface Props {
   /** Supplying a day enables the task's optional tracker panel. */
   day?: Day
   onChanged?: () => void
-  onLogMeal?: () => void
+  onLogMeal?: (meal?: Meal) => void
 }
 
 /**
@@ -159,7 +159,7 @@ export function TaskRow({ entry, disabled, onToggle, day, onChanged, onLogMeal }
             entry={entry}
             day={day!}
             onChanged={() => onChanged?.()}
-            onLogMeal={() => onLogMeal?.()}
+            onLogMeal={(meal) => onLogMeal?.(meal)}
           />
         </div>
       )}
@@ -198,7 +198,7 @@ export function TaskRow({ entry, disabled, onToggle, day, onChanged, onLogMeal }
                 entry={entry}
                 day={day!}
                 onChanged={() => onChanged?.()}
-                onLogMeal={() => onLogMeal?.()}
+                onLogMeal={(meal) => onLogMeal?.(meal)}
               />
             </div>
           )}

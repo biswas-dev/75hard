@@ -159,18 +159,24 @@ jobs:
           LOGIN_GITHUB_CLIENT_SECRET=${LOGIN_GITHUB_CLIENT_SECRET}
           ADMIN_EMAIL=${H75_ADMIN_EMAIL}
           ADMIN_PASSWORD=${H75_ADMIN_PASSWORD}
-          AI_1_PROVIDER=nvidia
-          AI_1_MODEL=meta/llama-3.2-90b-vision-instruct
-          AI_1_API_KEY=${NVIDIA_API_KEY}
-          AI_2_PROVIDER=deepseek
-          AI_2_MODEL=deepseek-v4-flash
-          AI_2_API_KEY=${DEEPSEEK_API_KEY}
-          AIV_1_PROVIDER=nvidia
-          AIV_1_MODEL=meta/llama-3.2-90b-vision-instruct
-          AIV_1_API_KEY=${NVIDIA_API_KEY}
-          AIV_2_PROVIDER=deepseek
-          AIV_2_MODEL=deepseek-v4-flash-vision-exp
-          AIV_2_API_KEY=${DEEPSEEK_API_KEY}
+          # DeepSeek leads. It answers in about a second and is the cheapest
+          # model that does the job; NVIDIA became unresponsive and, sitting in
+          # slot 1, cost every single request its full retry budget before the
+          # chain could reach a provider that worked.
+          AI_1_PROVIDER=deepseek
+          AI_1_MODEL=deepseek-v4-flash
+          AI_1_API_KEY=${DEEPSEEK_API_KEY}
+          AI_2_PROVIDER=nvidia
+          AI_2_MODEL=meta/llama-3.2-90b-vision-instruct
+          AI_2_API_KEY=${NVIDIA_API_KEY}
+          # deepseek-v4-flash-vision-exp is the only multimodal model DeepSeek
+          # publishes, so it is both the cheapest and the only option here.
+          AIV_1_PROVIDER=deepseek
+          AIV_1_MODEL=deepseek-v4-flash-vision-exp
+          AIV_1_API_KEY=${DEEPSEEK_API_KEY}
+          AIV_2_PROVIDER=nvidia
+          AIV_2_MODEL=meta/llama-3.2-90b-vision-instruct
+          AIV_2_API_KEY=${NVIDIA_API_KEY}
           STRAVA_CLIENT_ID=${STRAVA_CLIENT_ID}
           STRAVA_CLIENT_SECRET=${STRAVA_CLIENT_SECRET}
           STRAVA_REDIRECT_URL=https://75hard.biswas.me/api/strava/callback
@@ -179,10 +185,10 @@ jobs:
           STRAVA_SYNC_MINUTES=120
           # One provider must not be able to spend the whole call budget: go-ai
           # keeps a reserve for untried slots, and a 150s default left it none.
-          AI_1_TIMEOUT_SECONDS=45
-          AI_2_TIMEOUT_SECONDS=45
-          AIV_1_TIMEOUT_SECONDS=45
-          AIV_2_TIMEOUT_SECONDS=45
+          AI_1_TIMEOUT_SECONDS=30
+          AI_2_TIMEOUT_SECONDS=30
+          AIV_1_TIMEOUT_SECONDS=30
+          AIV_2_TIMEOUT_SECONDS=30
           ENVEOF
           # Strip the heredoc's YAML indentation, or every value is prefixed
           # with spaces and the app reads garbage.

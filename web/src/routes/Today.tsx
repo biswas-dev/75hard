@@ -8,7 +8,7 @@ import { PhotoUpload } from '../components/PhotoUpload'
 import { SummaryPanel } from '../components/SummaryPanel'
 import { TaskRow } from '../components/TaskRow'
 import { ApiError, api } from '../lib/api'
-import type { Day, Entry, Program, Summary } from '../lib/types'
+import type { Day, Entry, Meal, Program, Summary } from '../lib/types'
 import { MealSheet } from './MealSheet'
 
 export function Today() {
@@ -19,6 +19,8 @@ export function Today() {
   const [error, setError] = useState('')
   const [confetti, setConfetti] = useState(false)
   const [mealOpen, setMealOpen] = useState(false)
+  // The meal being edited, or null for a new one.
+  const [editingMeal, setEditingMeal] = useState<Meal | null>(null)
   const [summary, setSummary] = useState<Summary | null>(null)
 
   // Tracks whether the day was already complete, so the celebration fires on
@@ -201,7 +203,10 @@ export function Today() {
             onToggle={toggle}
             day={day}
             onChanged={load}
-            onLogMeal={() => setMealOpen(true)}
+            onLogMeal={(meal) => {
+              setEditingMeal(meal ?? null)
+              setMealOpen(true)
+            }}
           />
         ))}
       </section>
@@ -315,10 +320,16 @@ export function Today() {
 
       {mealOpen && (
         <MealSheet
+          key={editingMeal?.id ?? 'new'}
           dayNumber={day.day_number}
-          onClose={() => setMealOpen(false)}
+          meal={editingMeal}
+          onClose={() => {
+            setMealOpen(false)
+            setEditingMeal(null)
+          }}
           onSaved={async () => {
             setMealOpen(false)
+            setEditingMeal(null)
             await load()
           }}
         />
