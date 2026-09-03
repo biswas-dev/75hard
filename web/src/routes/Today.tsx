@@ -388,6 +388,9 @@ export function Today() {
             setEditingMeal(null)
             await load()
           }}
+          onChanged={() => {
+            void load()
+          }}
         />
       )}
 

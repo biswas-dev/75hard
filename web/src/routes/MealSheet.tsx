@@ -9,6 +9,12 @@ interface Props {
   onClose: () => void
   onSaved: () => void
   /**
+   * Refresh the day without closing the sheet. Used when an estimate is
+   * written straight to an existing meal, so the day's totals keep up while
+   * the sheet stays open for review.
+   */
+  onChanged?: () => void
+  /**
    * An existing meal to edit. Absent means a new one.
    *
    * Without this a meal was write-once: a wrong estimate, or one that arrived
@@ -36,7 +42,7 @@ const emptyItem: DraftItem = { name: '', qty: '1', unit: 'serving', kcal: '', pr
  * When items are present the server sums them, so the totals shown here are a
  * preview of what it will store rather than a second source of truth.
  */
-export function MealSheet({ dayNumber, onClose, onSaved, meal }: Props) {
+export function MealSheet({ dayNumber, onClose, onSaved, onChanged, meal }: Props) {
   const editing = meal ?? null
   const [name, setName] = useState(editing?.name ?? '')
   // Sent to the model with the photo, and kept with the meal.
@@ -105,14 +111,69 @@ export function MealSheet({ dayNumber, onClose, onSaved, meal }: Props) {
       const hint = [name.trim(), detail.trim()].filter(Boolean).join('. ')
       const { estimate, cached } = await api.analyzeFood(photo.id, hint)
       applyEstimate(estimate)
-      setAiNote(
-        (cached ? 'From a previous estimate. ' : '') +
-          (estimate.notes || 'Check the numbers before saving.'),
-      )
+      const prefix = cached ? 'From a previous estimate. ' : ''
+
+      // For a meal that already exists, write the numbers immediately.
+      //
+      // They used to live only in this form until Save was pressed, so closing
+      // the sheet — or letting the phone reclaim the tab — silently threw away
+      // an estimate that had just cost a model call and a wait. Nothing is
+      // lost by storing it: the fields below stay editable and saving again
+      // overwrites it. A new meal still waits for Save, because there is no
+      // row yet and an unreviewed estimate should not create one.
+      if (editing) {
+        try {
+          await api.updateMeal(editing.id, estimateChanges(estimate))
+          onChanged?.()
+          setAiNote(prefix + 'Saved. ' + (estimate.notes || 'Adjust anything that looks wrong.'))
+          return
+        } catch {
+          setAiNote(prefix + 'Could not save this automatically — press Save to keep it.')
+          return
+        }
+      }
+      setAiNote(prefix + (estimate.notes || 'Check the numbers before saving.'))
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Could not analyse that photo')
     } finally {
       setAnalyzing(false)
+    }
+  }
+
+  /**
+   * The update body for an estimate, derived from the estimate itself.
+   *
+   * It deliberately does not read the form state that applyEstimate has just
+   * set: those setters are asynchronous, so reading them here would save the
+   * values from before the estimate arrived.
+   */
+  function estimateChanges(est: FoodEstimate) {
+    const base = {
+      photo_id: photo?.id ?? null,
+      name: name.trim() || est.name || '',
+      slot,
+      notes: detail.trim(),
+    }
+    if (est.items.length > 0) {
+      return {
+        ...base,
+        items: est.items.map((it) => ({
+          name: it.name,
+          qty: it.qty || 1,
+          unit: it.unit || 'serving',
+          kcal: Math.round(it.kcal),
+          protein_g: Math.round(it.protein_g),
+          carbs_g: Math.round(it.carbs_g),
+          fat_g: Math.round(it.fat_g),
+        })),
+      }
+    }
+    return {
+      ...base,
+      kcal: Math.round(est.kcal),
+      protein_g: Math.round(est.protein_g),
+      carbs_g: Math.round(est.carbs_g),
+      fat_g: Math.round(est.fat_g),
     }
   }
 

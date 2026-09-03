@@ -17,11 +17,13 @@ import (
 	"flag"
 	"fmt"
 	"os"
+	"strconv"
 	"strings"
 
 	"github.com/anchoo2kewl/75hard/api/internal/auth"
 	"github.com/anchoo2kewl/75hard/api/internal/config"
 	"github.com/anchoo2kewl/75hard/api/internal/db"
+	"github.com/anchoo2kewl/75hard/api/internal/secret"
 )
 
 func main() {
@@ -55,6 +57,24 @@ func main() {
 		}
 	case "list-users":
 		if err := listUsers(database); err != nil {
+			fail("%v", err)
+		}
+	case "set-ai-key":
+		if len(args) < 6 {
+			fail("usage: admin set-ai-key <email> <slot> <provider> <model> <api-key>")
+		}
+		slot, err := strconv.Atoi(args[2])
+		if err != nil {
+			fail("slot must be a number: %v", err)
+		}
+		if err := setAIKey(database, cfg, args[1], slot, args[3], args[4], args[5]); err != nil {
+			fail("%v", err)
+		}
+	case "list-ai-keys":
+		if len(args) < 2 {
+			fail("usage: admin list-ai-keys <email>")
+		}
+		if err := listAIKeys(database, args[1]); err != nil {
 			fail("%v", err)
 		}
 	default:
@@ -166,6 +186,13 @@ func usage() {
   admin list-users
       Lists active accounts.
 
+  admin set-ai-key <email> <slot> <provider> <model> <api-key>
+      Stores an AI provider key for one account, encrypted with the server's
+      own ENCRYPTION_KEY. Slot 1 is tried first, then 2, then 3.
+
+  admin list-ai-keys <email>
+      Shows which slots are configured. Keys are never decrypted.
+
 Reads DB_PATH from the environment, as the server does.
 `)
 }
@@ -173,4 +200,88 @@ Reads DB_PATH from the environment, as the server does.
 func fail(format string, args ...any) {
 	fmt.Fprintf(os.Stderr, "error: "+format+"\n", args...)
 	os.Exit(1)
+}
+
+// setAIKey stores an encrypted provider key against one account's slot.
+//
+// It exists so the operator can seed an account's keys without pasting them
+// through the UI or, worse, writing ciphertext by hand: the key is encrypted
+// here with the same cipher the server uses, from the same ENCRYPTION_KEY, so
+// what lands in the table is exactly what the app would have written.
+func setAIKey(database *db.DB, cfg *config.Config, email string, slot int, provider, model, apiKey string) error {
+	email = strings.ToLower(strings.TrimSpace(email))
+	if slot < 1 || slot > 3 {
+		return fmt.Errorf("slot must be 1, 2 or 3")
+	}
+	if strings.TrimSpace(apiKey) == "" {
+		return fmt.Errorf("the api key is empty")
+	}
+	if strings.TrimSpace(cfg.EncryptionKey) == "" {
+		return fmt.Errorf("ENCRYPTION_KEY is not set, so the key cannot be stored")
+	}
+
+	cipher, err := secret.New(cfg.EncryptionKey)
+	if err != nil {
+		return fmt.Errorf("could not build the cipher: %w", err)
+	}
+	enc, err := cipher.Encrypt(apiKey)
+	if err != nil {
+		return fmt.Errorf("could not encrypt the key: %w", err)
+	}
+
+	var id int64
+	if err := database.QueryRow(
+		`SELECT id FROM users WHERE lower(email) = ? AND deleted_at IS NULL`, email).
+		Scan(&id); err != nil {
+		return fmt.Errorf("no active account for %s", email)
+	}
+
+	if _, err := database.Exec(
+		`INSERT INTO user_ai_providers (user_id, slot, provider, model, api_key_enc, key_hint, enabled)
+		 VALUES (?, ?, ?, ?, ?, ?, 1)
+		 ON CONFLICT(user_id, slot) DO UPDATE SET
+		     provider    = excluded.provider,
+		     model       = excluded.model,
+		     api_key_enc = excluded.api_key_enc,
+		     key_hint    = excluded.key_hint,
+		     enabled     = 1,
+		     updated_at  = CURRENT_TIMESTAMP`,
+		id, slot, provider, model, enc, secret.Hint(apiKey)); err != nil {
+		return fmt.Errorf("could not store the key: %w", err)
+	}
+
+	fmt.Printf("slot %d for %s: %s (%s) key %s\n", slot, email, provider, model, secret.Hint(apiKey))
+	return nil
+}
+
+// listAIKeys shows what is configured, without ever decrypting anything.
+func listAIKeys(database *db.DB, email string) error {
+	email = strings.ToLower(strings.TrimSpace(email))
+	rows, err := database.Query(
+		`SELECT p.slot, p.provider, p.model, p.key_hint, p.enabled
+		   FROM user_ai_providers p JOIN users u ON u.id = p.user_id
+		  WHERE lower(u.email) = ? ORDER BY p.slot`, email)
+	if err != nil {
+		return err
+	}
+	defer rows.Close()
+
+	found := false
+	for rows.Next() {
+		var slot, enabled int
+		var provider, model, hint string
+		if err := rows.Scan(&slot, &provider, &model, &hint, &enabled); err != nil {
+			return err
+		}
+		state := "enabled"
+		if enabled == 0 {
+			state = "disabled"
+		}
+		fmt.Printf("slot %d  %-10s %-32s %-10s %s\n", slot, provider, model, hint, state)
+		found = true
+	}
+	if !found {
+		fmt.Printf("no provider keys stored for %s\n", email)
+	}
+	return rows.Err()
 }
