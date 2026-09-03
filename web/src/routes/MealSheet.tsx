@@ -39,9 +39,13 @@ const emptyItem: DraftItem = { name: '', qty: '1', unit: 'serving', kcal: '', pr
 export function MealSheet({ dayNumber, onClose, onSaved, meal }: Props) {
   const editing = meal ?? null
   const [name, setName] = useState(editing?.name ?? '')
-  // Sent to the model with the photo, and not saved: it is context for the
-  // estimate, not part of the meal record.
-  const [detail, setDetail] = useState('')
+  // Sent to the model with the photo, and kept with the meal.
+  //
+  // It was discarded after the estimate, which meant re-opening a meal to
+  // re-run one started from a blank field — and the description of what the
+  // photograph cannot show is the most valuable part of the request, the part
+  // that took thought to write. It is stored as the meal's note.
+  const [detail, setDetail] = useState(editing?.notes ?? '')
   const [slot, setSlot] = useState<Meal['slot']>(editing?.slot ?? 'lunch')
   // When editing, the meal's existing photo has to be present or the
   // "estimate from the photo" button never appears — which is exactly the
@@ -154,6 +158,8 @@ export function MealSheet({ dayNumber, onClose, onSaved, meal }: Props) {
         photo_id: photo?.id ?? null,
         name: name.trim(),
         slot,
+        // Kept so a later re-run starts from what was already described.
+        notes: detail.trim(),
         ...(itemised
           ? {
               items: items
@@ -228,11 +234,16 @@ export function MealSheet({ dayNumber, onClose, onSaved, meal }: Props) {
               </label>
               <input
                 id="meal-detail"
-                className="field mb-2"
+                className="field"
                 placeholder="e.g. cooked in butter, whole milk, large portion"
                 value={detail}
                 onChange={(e) => setDetail(e.target.value)}
               />
+              <p className="mb-2 mt-1 text-xs text-ink-600">
+                Saved with the meal, so re-running the estimate later starts from what you
+                already wrote. Naming the items is what stops the model guessing at portions
+                it cannot see.
+              </p>
               <button
                 type="button"
                 className="btn-ghost w-full border-flame-500/30 text-flame-400"
