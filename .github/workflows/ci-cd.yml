@@ -185,10 +185,10 @@ jobs:
           STRAVA_SYNC_MINUTES=120
           # One provider must not be able to spend the whole call budget: go-ai
           # keeps a reserve for untried slots, and a 150s default left it none.
-          AI_1_TIMEOUT_SECONDS=30
-          AI_2_TIMEOUT_SECONDS=30
-          AIV_1_TIMEOUT_SECONDS=30
-          AIV_2_TIMEOUT_SECONDS=30
+          AI_1_TIMEOUT_SECONDS=60
+          AI_2_TIMEOUT_SECONDS=60
+          AIV_1_TIMEOUT_SECONDS=60
+          AIV_2_TIMEOUT_SECONDS=60
           ENVEOF
           # Strip the heredoc's YAML indentation, or every value is prefixed
           # with spaces and the app reads garbage.

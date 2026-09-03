@@ -22,12 +22,12 @@ const aiCallTimeout = 150 * time.Second
 
 // AISlotTimeout bounds one provider.
 //
-// The whole budget has to fit inside the proxy's own read timeout, or the
-// caller gets a 504 while the backend is still working. With two slots and two
-// attempts each, 30s bounds the worst case at about two minutes, which leaves
-// the proxy room and means an unresponsive provider costs a minute rather than
-// the entire request.
-const AISlotTimeout = 30 * time.Second
+// Measured, not guessed: a real food photograph through a reasoning vision
+// model takes about thirty seconds, so a thirty-second bound would time out
+// the very calls it is meant to allow. Sixty leaves room for a slow one while
+// still fitting two slots and two attempts inside the call budget, which in
+// turn fits inside the proxy's read timeout.
+const AISlotTimeout = 60 * time.Second
 
 // AIMaxAttempts is tries per provider, including the first.
 //
