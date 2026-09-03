@@ -98,21 +98,7 @@ function NutritionTracker({
                 <span className="text-xs capitalize text-ink-600">
                   {meal.slot}
                   {meal.estimate_status === 'done' && ' · AI estimate'}
-                  {meal.estimate_status === 'failed' && (
-                    <>
-                      {' · '}
-                      <button
-                        className="text-flame-400 hover:underline"
-                        title={meal.estimate_error}
-                        onClick={async () => {
-                          await api.retryEstimate(meal.id)
-                          onChanged()
-                        }}
-                      >
-                        estimate failed — retry
-                      </button>
-                    </>
-                  )}
+                  {meal.estimate_status === 'failed' && ' · estimate failed'}
                   {meal.estimate_status === '' && meal.source === 'ai' && ' · AI estimate'}
                 </span>
               </button>
@@ -120,6 +106,18 @@ function NutritionTracker({
               <span className="shrink-0 font-mono text-sm text-ink-400">
                 {meal.estimate_status === 'pending' ? <PulseDots /> : Math.round(meal.kcal)}
               </span>
+              {meal.estimate_status === 'failed' && (
+                <button
+                  className="shrink-0 px-1 text-xs text-flame-400 hover:underline"
+                  title={meal.estimate_error}
+                  onClick={async () => {
+                    await api.retryEstimate(meal.id)
+                    onChanged()
+                  }}
+                >
+                  retry
+                </button>
+              )}
               <button
                 aria-label={`Remove ${meal.name || 'meal'}`}
                 className="shrink-0 px-1 text-ink-600 hover:text-red-400"

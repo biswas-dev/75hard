@@ -322,16 +322,30 @@ export function Today() {
                     className="h-10 w-10 shrink-0 rounded-lg object-cover"
                   />
                 )}
-                <span className="min-w-0 flex-1">
-                  <span className="block truncate text-ink-200">{meal.name || meal.slot}</span>
-                  <span className="text-xs capitalize text-ink-600">
-                    {meal.slot}
-                    {meal.items.length > 0 && ` · ${meal.items.length} items`}
+                {/* The whole row opens the meal. A meal saved without
+                    calories -- which is what a failed estimate leaves -- was
+                    otherwise only deletable and retypeable. */}
+                <button
+                  type="button"
+                  onClick={() => {
+                    setEditingMeal(meal)
+                    setMealOpen(true)
+                  }}
+                  className="flex min-w-0 flex-1 items-center gap-3 text-left"
+                  title="Open this meal to edit it or estimate its calories"
+                >
+                  <span className="min-w-0 flex-1">
+                    <span className="block truncate text-ink-200">{meal.name || meal.slot}</span>
+                    <span className="text-xs capitalize text-ink-600">
+                      {meal.slot}
+                      {meal.items.length > 0 && ` · ${meal.items.length} items`}
+                      {meal.kcal === 0 && ' · tap to estimate'}
+                    </span>
                   </span>
-                </span>
-                <span className="shrink-0 font-mono text-sm text-ink-400">
-                  {Math.round(meal.kcal)}
-                </span>
+                  <span className="shrink-0 font-mono text-sm text-ink-400">
+                    {Math.round(meal.kcal)}
+                  </span>
+                </button>
                 <button
                   aria-label={`Delete ${meal.name || 'meal'}`}
                   className="shrink-0 p-1 text-ink-600 hover:text-red-400"
