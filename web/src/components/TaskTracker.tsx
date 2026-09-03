@@ -160,10 +160,18 @@ function NutritionTracker({
 }
 
 function WorkoutTracker({ entry, day, onChanged }: { entry: Entry; day: Day; onChanged: () => void }) {
-  // The outdoor task tracks outdoor sessions; anything else tracks indoor.
-  const kind: 'indoor' | 'outdoor' = entry.key === 'workout_outdoor' ? 'outdoor' : 'indoor'
-  const sessions = day.workouts.filter((w) => w.kind === kind)
-  const logged = sessions.reduce((n, w) => n + w.minutes, 0)
+  // Where the session happened, defaulted from the task but free to change:
+  // the second workout may be outdoors too, and often is.
+  const [kind, setKind] = useState<'indoor' | 'outdoor'>(
+    entry.key === 'workout_outdoor' ? 'outdoor' : 'indoor',
+  )
+  // Every session on the day, not just those matching this task's location.
+  //
+  // The two workout tasks are no longer an indoor slot and an outdoor slot —
+  // they are "one of them was outside" and "there was a second one" — so
+  // filtering by kind would hide the very session that satisfied the task.
+  const sessions = day.workouts
+  const credited = entry.value ?? 0
 
   const [activity, setActivity] = useState('')
   const [minutes, setMinutes] = useState('')
@@ -179,8 +187,8 @@ function WorkoutTracker({ entry, day, onChanged }: { entry: Entry; day: Day; onC
         kind,
         activity: activity.trim(),
         minutes: mins,
-        // Crediting the task means the logged minutes drive completion, so
-        // two short sessions can add up to the target.
+        // The server credits both workout tasks from the day's sessions; the
+        // task id only says which one the entry was made from.
         task_id: entry.task_id,
       })
       setActivity('')
@@ -194,8 +202,13 @@ function WorkoutTracker({ entry, day, onChanged }: { entry: Entry; day: Day; onC
   return (
     <div className="space-y-4">
       <p className="text-sm text-ink-400">
-        {logged} min logged {kind}
+        {credited} min credited
         {entry.target_num != null && <span className="text-ink-600"> of {entry.target_num}</span>}
+      </p>
+      <p className="text-xs text-ink-600">
+        {entry.key === 'workout_outdoor'
+          ? 'Your longest session outside.'
+          : 'Your longest session after the longest. Sessions starting within 2 hours of each other count as one.'}
       </p>
 
       {sessions.length > 0 && (
@@ -204,6 +217,9 @@ function WorkoutTracker({ entry, day, onChanged }: { entry: Entry; day: Day; onC
             <li key={w.id} className="flex items-center gap-3 py-2">
               <span className="min-w-0 flex-1 truncate text-sm text-ink-200">
                 {w.activity || 'Session'}
+              </span>
+              <span className="shrink-0 text-xs uppercase tracking-wide text-ink-600">
+                {w.kind}
               </span>
               <span className="shrink-0 font-mono text-sm text-ink-400">{w.minutes} min</span>
               <button
@@ -220,6 +236,23 @@ function WorkoutTracker({ entry, day, onChanged }: { entry: Entry; day: Day; onC
           ))}
         </ul>
       )}
+
+      <div className="grid grid-cols-2 gap-2">
+        {(['outdoor', 'indoor'] as const).map((k) => (
+          <button
+            key={k}
+            type="button"
+            onClick={() => setKind(k)}
+            className={`rounded-xl border py-2 text-sm capitalize transition ${
+              kind === k
+                ? 'border-flame-500 bg-flame-500/15 text-flame-400'
+                : 'border-ink-800 bg-ink-850 text-ink-400'
+            }`}
+          >
+            {k}
+          </button>
+        ))}
+      </div>
 
       <div className="flex gap-2">
         <input

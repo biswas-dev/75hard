@@ -12,8 +12,8 @@ type DraftTask = Pick<ProgramTask, 'title' | 'detail' | 'icon' | 'kind' | 'unit'
 // The canonical six, mirrored from the server's DefaultTasks(). Shown up front
 // so the template can be edited before day 1 rather than after.
 const DEFAULT_TASKS: DraftTask[] = [
-  { key: 'workout_indoor', title: '45-minute workout', detail: 'Any training you like, at least 45 minutes.', icon: 'dumbbell', kind: 'duration', target_num: 45, unit: 'min', required: true },
-  { key: 'workout_outdoor', title: '45-minute outdoor workout', detail: 'A second session, outside, whatever the weather.', icon: 'tree', kind: 'duration', target_num: 45, unit: 'min', required: true },
+  { key: 'workout_outdoor', title: '45-minute outdoor workout', detail: 'At least 45 minutes outside, in one session.', icon: 'tree', kind: 'duration', target_num: 45, unit: 'min', required: true },
+  { key: 'workout_second', title: 'Second 45-minute workout', detail: 'Any location, starting at least 2 hours after the first.', icon: 'dumbbell', kind: 'duration', target_num: 45, unit: 'min', required: true },
   { key: 'diet', title: 'Follow the diet', detail: 'No cheat meals, no alcohol.', icon: 'salad', kind: 'check', target_num: null, unit: '', required: true },
   { key: 'water', title: 'Drink 1 gallon of water', detail: '128 oz over the day.', icon: 'droplet', kind: 'number', target_num: 128, unit: 'oz', required: true },
   { key: 'reading', title: 'Read 10 pages', detail: 'Non-fiction, personal development.', icon: 'book', kind: 'number', target_num: 10, unit: 'pages', required: true },

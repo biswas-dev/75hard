@@ -242,15 +242,18 @@ func f(v float64) *float64 { return &v }
 func DefaultTasks() []DefaultTask {
 	return []DefaultTask{
 		{
-			Key: "workout_indoor", Title: "45-minute workout",
-			Detail: "Any training you like, at least 45 minutes.",
-			Icon:   "dumbbell", Kind: KindDuration, TargetNum: f(45), Unit: "min", Required: true,
+			Key: "workout_outdoor", Title: "45-minute outdoor workout",
+			Detail: "At least 45 minutes outside, in one session.",
+			Icon:   "tree", Kind: KindDuration, TargetNum: f(45), Unit: "min", Required: true,
 			Tracker: TrackerWorkout,
 		},
+		// The second workout is not "the indoor one". Two outdoor sessions
+		// satisfy the rules, and demanding one of each turned a morning walk
+		// followed by an outdoor swim into an unfinished day.
 		{
-			Key: "workout_outdoor", Title: "45-minute outdoor workout",
-			Detail: "A second session, outside, whatever the weather.",
-			Icon:   "tree", Kind: KindDuration, TargetNum: f(45), Unit: "min", Required: true,
+			Key: "workout_second", Title: "Second 45-minute workout",
+			Detail: "Any location, starting at least 2 hours after the first.",
+			Icon:   "dumbbell", Kind: KindDuration, TargetNum: f(45), Unit: "min", Required: true,
 			Tracker: TrackerWorkout,
 		},
 		{

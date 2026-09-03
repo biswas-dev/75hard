@@ -341,6 +341,10 @@ type createWorkoutRequest struct {
 	// When set, ticking this workout also credits the named task, so logging
 	// a 45-minute outdoor session completes the outdoor task in one action.
 	TaskID *int64 `json:"task_id"`
+	// StartedAt decides which session a workout belongs to. Optional: the
+	// server stamps now for an entry against today, and leaves it unset for
+	// an earlier day rather than inventing an hour.
+	StartedAt *time.Time `json:"started_at"`
 }
 
 // HandleCreateWorkout logs a training session.
@@ -366,11 +370,24 @@ func (s *Server) HandleCreateWorkout(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Stamp the time only when the entry is for today.
+	//
+	// A workout logged against an earlier day happened at an hour nobody has
+	// recorded, and "now" would be a lie that puts it in the wrong session.
+	// A record with no time joins the day's most recent session instead,
+	// which is where minutes added by hand almost always belong.
+	var startedAt any
+	if req.StartedAt != nil {
+		startedAt = req.StartedAt.UTC()
+	} else if s.dayIsToday(ctx, dayID) {
+		startedAt = time.Now().UTC()
+	}
+
 	res, err := s.db.ExecContext(ctx, `
-		INSERT INTO workouts (user_id, day_id, kind, activity, minutes, kcal, notes)
-		VALUES (?, ?, ?, ?, ?, ?, ?)`,
+		INSERT INTO workouts (user_id, day_id, kind, activity, minutes, kcal, notes, started_at)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
 		userID, dayID, kind, strings.TrimSpace(req.Activity), req.Minutes, req.Kcal,
-		strings.TrimSpace(req.Notes))
+		strings.TrimSpace(req.Notes), startedAt)
 	if err != nil {
 		s.log.Error("insert workout", zap.Error(err))
 		respondError(w, http.StatusInternalServerError, "could not log workout", "internal")
@@ -378,44 +395,14 @@ func (s *Server) HandleCreateWorkout(w http.ResponseWriter, r *http.Request) {
 	}
 	id, _ := res.LastInsertId()
 
-	// Credit the linked duration task with the total minutes logged for it
-	// today, so two short sessions can add up to the target.
-	if req.TaskID != nil {
-		var owns int
-		if err := s.db.QueryRowContext(ctx,
-			`SELECT COUNT(*) FROM program_tasks WHERE id = ? AND program_id = ?`,
-			*req.TaskID, programID).Scan(&owns); err == nil && owns == 1 {
-			var total int
-			_ = s.db.QueryRowContext(ctx,
-				`SELECT COALESCE(SUM(minutes), 0) FROM workouts WHERE day_id = ? AND kind = ?`,
-				dayID, kind).Scan(&total)
-
-			var target *float64
-			var taskKind string
-			if err := s.db.QueryRowContext(ctx,
-				`SELECT kind, target_num FROM program_tasks WHERE id = ?`, *req.TaskID).
-				Scan(&taskKind, &target); err == nil {
-				value := float64(total)
-				done := program.EntrySatisfies(
-					program.Task{ID: *req.TaskID, Kind: taskKind, TargetNum: target, Required: true},
-					program.Entry{ValueNum: &value, Completed: true})
-
-				var completedAt any
-				if done {
-					completedAt = time.Now().UTC()
-				}
-				if _, err := s.db.ExecContext(ctx, `
-					INSERT INTO task_entries (day_id, program_task_id, completed_at, value_num)
-					VALUES (?, ?, ?, ?)
-					ON CONFLICT(day_id, program_task_id) DO UPDATE SET
-						completed_at = excluded.completed_at,
-						value_num    = excluded.value_num,
-						updated_at   = CURRENT_TIMESTAMP`,
-					dayID, *req.TaskID, completedAt, value); err != nil {
-					s.log.Error("credit workout task", zap.Error(err))
-				}
-			}
-		}
+	// Credit the day's workout tasks from its sessions.
+	//
+	// This runs whether or not a task was named: the two tasks are decided by
+	// the shape of the whole day — the longest outdoor session, and the
+	// longest session after the longest — so crediting only the task the
+	// caller pointed at would leave the other one stale.
+	s.tickWorkoutTasks(ctx, r, programID, dayID)
+	{
 		if err := s.refreshDayStatus(r, programID, dayID); err != nil {
 			s.log.Error("refresh day after workout", zap.Error(err))
 		}
@@ -607,4 +594,22 @@ func derefFloat(f *float64) float64 {
 		return 0
 	}
 	return *f
+}
+
+// dayIsToday reports whether a day row is the user's current local date.
+//
+// Used to decide whether "now" is a truthful start time for a hand-logged
+// workout: it is, for an entry against today, and it is not for one filed
+// against an earlier day.
+func (s *Server) dayIsToday(ctx context.Context, dayID int64) bool {
+	var date, tz string
+	if err := s.db.QueryRowContext(ctx, `
+		SELECT d.date, COALESCE(u.timezone, 'UTC')
+		  FROM days d
+		  JOIN programs p ON p.id = d.program_id
+		  JOIN users u ON u.id = p.user_id
+		 WHERE d.id = ?`, dayID).Scan(&date, &tz); err != nil {
+		return false
+	}
+	return date == program.LocalDate(time.Now(), program.LoadLocation(tz))
 }

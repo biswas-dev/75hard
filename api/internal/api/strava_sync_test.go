@@ -29,8 +29,8 @@ func TestStravaSyncIntervalIsClamped(t *testing.T) {
 }
 
 func TestStravaSyncDefaults(t *testing.T) {
-	if StravaSyncDefault != 2*time.Hour {
-		t.Errorf("default = %v, want 2h", StravaSyncDefault)
+	if StravaSyncDefault != 15*time.Minute {
+		t.Errorf("default = %v, want 15m", StravaSyncDefault)
 	}
 	if StravaSyncMinimum != 15*time.Minute {
 		t.Errorf("minimum = %v, want 15m", StravaSyncMinimum)

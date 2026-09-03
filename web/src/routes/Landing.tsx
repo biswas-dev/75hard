@@ -225,7 +225,7 @@ export function Landing() {
 const RULES = [
   {
     title: 'Two 45-minute workouts',
-    detail: 'One of them outdoors, whatever the weather. They have to be separate sessions.',
+    detail: 'At least one outdoors, whatever the weather, and the second starting two hours after the first.',
   },
   {
     title: 'Follow a diet',
@@ -273,7 +273,7 @@ const FEATURES = [
   {
     title: 'Strava, if you use it',
     detail:
-      'Connect once and your activities import themselves. A session outdoors ticks the outdoor workout, a treadmill run ticks the indoor one, and your average training heart rate is charted across the run.',
+      'Connect once and your activities import themselves. Sessions are grouped by when they started, so a morning walk and an evening swim count as two workouts, and your average training heart rate is charted across the run.',
   },
   {
     title: 'Optional extras that cannot fail you',

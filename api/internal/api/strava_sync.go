@@ -12,10 +12,11 @@ import (
 // StravaSyncDefault is how often connected accounts are polled when nothing
 // else is configured.
 //
-// Two hours is chosen against Strava's rate limit rather than against
-// impatience: 100 read requests per fifteen minutes is the ceiling, and a walk
-// finished at nine is still logged against the ninth long before the day ends.
-const StravaSyncDefault = 2 * time.Hour
+// Fifteen minutes is the floor Strava's rate limit allows comfortably — 100
+// read requests per fifteen minutes is the ceiling, and one connected account
+// costs a single request per poll — and it is short enough that a session
+// appears in the app while it is still the thing you just did.
+const StravaSyncDefault = 15 * time.Minute
 
 // StravaSyncMinimum is the floor on the configured interval.
 //

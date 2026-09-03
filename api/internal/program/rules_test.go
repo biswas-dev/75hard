@@ -198,7 +198,7 @@ func TestDefaultTasksAreTheCanonicalSix(t *testing.T) {
 	// The template may grow optional extras, but the canonical six must all be
 	// present and all be required — that is what makes the challenge itself.
 	canonical := []string{
-		"workout_indoor", "workout_outdoor", "diet",
+		"workout_second", "workout_outdoor", "diet",
 		"water", "reading", "progress_photo",
 	}
 

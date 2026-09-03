@@ -124,7 +124,7 @@ func Load() *Config {
 		StravaErrorURL:     getEnv("STRAVA_ERROR_URL", "http://localhost:5175/settings?strava=error"),
 		StravaAPIBase:      getEnv("STRAVA_API_BASE", ""),
 		StravaTokenURL:     getEnv("STRAVA_TOKEN_URL", ""),
-		StravaSyncInterval: time.Duration(getEnvInt("STRAVA_SYNC_MINUTES", 120)) * time.Minute,
+		StravaSyncInterval: time.Duration(getEnvInt("STRAVA_SYNC_MINUTES", 15)) * time.Minute,
 
 		EncryptionKey: getEnv("ENCRYPTION_KEY", ""),
 

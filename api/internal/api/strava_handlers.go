@@ -381,11 +381,15 @@ func (s *Server) creditStravaActivity(
 		minutes int
 		kcal    *float64
 		workout sql.NullInt64
+		// Carried onto the workout so the day can be grouped into sessions:
+		// without a start time two efforts hours apart are indistinguishable
+		// from one logged twice.
+		startAt sql.NullTime
 	)
 	if err := s.db.QueryRowContext(ctx, `
-		SELECT id, kind, name, moving_seconds / 60, kcal, workout_id
+		SELECT id, kind, name, moving_seconds / 60, kcal, workout_id, start_at
 		  FROM strava_activities WHERE user_id = ? AND strava_id = ?`,
-		userID, stravaID).Scan(&rowID, &kind, &name, &minutes, &kcal, &workout); err != nil {
+		userID, stravaID).Scan(&rowID, &kind, &name, &minutes, &kcal, &workout, &startAt); err != nil {
 		return err
 	}
 
@@ -394,9 +398,9 @@ func (s *Server) creditStravaActivity(
 		// Strava rather than creating a second one.
 		_, err := s.db.ExecContext(ctx, `
 			UPDATE workouts SET kind = ?, activity = ?, minutes = ?, kcal = ?,
-			                    updated_at = CURRENT_TIMESTAMP
+			                    started_at = ?, updated_at = CURRENT_TIMESTAMP
 			 WHERE id = ? AND user_id = ?`,
-			kind, name, minutes, kcal, workout.Int64, userID)
+			kind, name, minutes, kcal, startAt, workout.Int64, userID)
 		if err == nil {
 			s.tickWorkoutTasks(ctx, r, programID, dayID)
 		}
@@ -404,9 +408,9 @@ func (s *Server) creditStravaActivity(
 	}
 
 	res, err := s.db.ExecContext(ctx, `
-		INSERT INTO workouts (user_id, day_id, kind, activity, minutes, kcal, notes)
-		VALUES (?, ?, ?, ?, ?, ?, 'Imported from Strava')`,
-		userID, dayID, kind, name, minutes, kcal)
+		INSERT INTO workouts (user_id, day_id, kind, activity, minutes, kcal, notes, started_at)
+		VALUES (?, ?, ?, ?, ?, ?, 'Imported from Strava', ?)`,
+		userID, dayID, kind, name, minutes, kcal, startAt)
 	if err != nil {
 		return err
 	}
@@ -420,12 +424,16 @@ func (s *Server) creditStravaActivity(
 	return nil
 }
 
-// tickWorkoutTasks re-evaluates every duration task with a workout tracker
-// against the minutes now logged for its kind.
+// tickWorkoutTasks re-evaluates the day's workout tasks from its sessions.
 //
-// Doing it for both kinds at once, from the totals, is what makes two short
-// sessions add up and what keeps an import idempotent: running it twice
-// produces the same answer.
+// The day's records are folded into sessions first — records starting within
+// SessionGap of one another are one workout, however many sources they came
+// from — and the two tasks are then credited from those sessions: the outdoor
+// task with the longest session that happened outside, the second-workout task
+// with the longest session other than the longest.
+//
+// Working from the totals each time is what keeps an import idempotent:
+// running it twice produces the same answer.
 func (s *Server) tickWorkoutTasks(ctx context.Context, r *http.Request, programID, dayID int64) {
 	rows, err := s.db.QueryContext(ctx, `
 		SELECT id, task_key, kind, target_num FROM program_tasks
@@ -454,18 +462,20 @@ func (s *Server) tickWorkoutTasks(ctx context.Context, r *http.Request, programI
 	// how this pool has deadlocked before.
 	rows.Close()
 
-	for _, t := range tasks {
-		// An outdoor task is fed by outdoor minutes; everything else indoor.
-		wantKind := "indoor"
-		if strings.Contains(t.key, "outdoor") {
-			wantKind = "outdoor"
-		}
+	sessions, err := s.sessionsForDay(ctx, dayID)
+	if err != nil {
+		s.log.Error("load workout sessions", zap.Error(err))
+		return
+	}
+	outdoorMinutes, secondMinutes := program.WorkoutCredit(sessions)
 
+	for _, t := range tasks {
 		var total int
-		if err := s.db.QueryRowContext(ctx,
-			`SELECT COALESCE(SUM(minutes), 0) FROM workouts WHERE day_id = ? AND kind = ?`,
-			dayID, wantKind).Scan(&total); err != nil {
-			continue
+		switch {
+		case strings.Contains(t.key, "outdoor"):
+			total = outdoorMinutes
+		default:
+			total = secondMinutes
 		}
 		if total == 0 {
 			continue
@@ -488,15 +498,37 @@ func (s *Server) tickWorkoutTasks(ctx context.Context, r *http.Request, programI
 				value_num    = excluded.value_num,
 				updated_at   = CURRENT_TIMESTAMP`,
 			dayID, t.id, completedAt, value); err != nil {
-			s.log.Error("credit strava task", zap.Error(err))
+			s.log.Error("tick workout task", zap.Error(err))
 		}
 	}
+}
 
-	// No consequence: an import runs unattended and on past days, so it may
-	// record progress but must never end the attempt.
-	if err := s.refreshDayStatusNoConsequence(r, programID, dayID); err != nil {
-		s.log.Error("refresh day after strava import", zap.Error(err))
+// sessionsForDay folds a day's workout records into sessions.
+func (s *Server) sessionsForDay(ctx context.Context, dayID int64) ([]program.Session, error) {
+	rows, err := s.db.QueryContext(ctx,
+		`SELECT id, kind, minutes, started_at FROM workouts WHERE day_id = ?`, dayID)
+	if err != nil {
+		return nil, err
 	}
+	defer rows.Close()
+
+	var recs []program.WorkoutRecord
+	for rows.Next() {
+		var rec program.WorkoutRecord
+		var started sql.NullTime
+		if err := rows.Scan(&rec.ID, &rec.Kind, &rec.Minutes, &started); err != nil {
+			return nil, err
+		}
+		if started.Valid {
+			t := started.Time
+			rec.StartedAt = &t
+		}
+		recs = append(recs, rec)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return program.GroupSessions(recs, program.SessionGap), nil
 }
 
 // activeProgramWindow returns the active program's id, start date and length.
