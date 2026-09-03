@@ -177,7 +177,8 @@ export function MealSheet({ dayNumber, onClose, onSaved, meal }: Props) {
       }
 
       if (editing) {
-        await api.updateMeal(editing.id, body)
+        const { day_number: _unused, ...changes } = body
+        await api.updateMeal(editing.id, changes)
       } else {
         await api.createMeal(body)
       }

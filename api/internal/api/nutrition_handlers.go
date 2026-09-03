@@ -192,6 +192,18 @@ type updateMealRequest struct {
 	CarbsG   *float64 `json:"carbs_g"`
 	FatG     *float64 `json:"fat_g"`
 	Notes    *string  `json:"notes"`
+	// PhotoID attaches or replaces the photo behind the meal.
+	PhotoID *int64 `json:"photo_id"`
+	// Items replaces the breakdown wholesale when present.
+	//
+	// Editing a meal is most often re-running an estimate on it, and an
+	// estimate arrives as a list of components. Without this the totals would
+	// update while the breakdown underneath them stayed as it was, which is
+	// worse than having no breakdown at all.
+	Items []mealItemPayload `json:"items"`
+	// DayNumber is accepted and ignored: the client sends one body for both
+	// create and update, and a meal cannot change the day it was eaten on.
+	DayNumber *int `json:"day_number"`
 }
 
 // HandleUpdateMeal edits a logged meal, e.g. correcting an AI estimate.
@@ -229,7 +241,26 @@ func (s *Server) HandleUpdateMeal(w http.ResponseWriter, r *http.Request) {
 	if req.Notes != nil {
 		sets, args = append(sets, "notes = ?"), append(args, strings.TrimSpace(*req.Notes))
 	}
-	if len(sets) == 0 {
+	if req.PhotoID != nil {
+		sets, args = append(sets, "photo_id = ?"), append(args, *req.PhotoID)
+	}
+	// Totals derived from an itemised estimate, so the two cannot disagree.
+	if req.Items != nil {
+		var kcal, protein, carbs, fat float64
+		for _, it := range req.Items {
+			kcal += it.Kcal
+			protein += it.ProteinG
+			carbs += it.CarbsG
+			fat += it.FatG
+		}
+		if req.Kcal == nil {
+			sets, args = append(sets, "kcal = ?"), append(args, kcal)
+			sets, args = append(sets, "protein_g = ?"), append(args, protein)
+			sets, args = append(sets, "carbs_g = ?"), append(args, carbs)
+			sets, args = append(sets, "fat_g = ?"), append(args, fat)
+		}
+	}
+	if len(sets) == 0 && req.Items == nil {
 		respondError(w, http.StatusBadRequest, "nothing to update", "no_changes")
 		return
 	}
@@ -241,6 +272,40 @@ func (s *Server) HandleUpdateMeal(w http.ResponseWriter, r *http.Request) {
 		`UPDATE meals SET `+strings.Join(sets, ", ")+` WHERE id = ? AND user_id = ?`, args...); err != nil {
 		respondError(w, http.StatusInternalServerError, "could not update meal", "internal")
 		return
+	}
+
+	// Replace the breakdown rather than appending, so a re-run estimate does
+	// not double the list.
+	if req.Items != nil {
+		if _, err := s.db.ExecContext(r.Context(),
+			`DELETE FROM meal_items WHERE meal_id = ?`, id); err != nil {
+			respondError(w, http.StatusInternalServerError, "could not update meal", "internal")
+			return
+		}
+		for i, it := range req.Items {
+			if strings.TrimSpace(it.Name) == "" {
+				continue
+			}
+			// Qty is optional; a nil pointer would store NULL rather than
+			// falling back to the column default, so it is resolved here the
+			// same way the create path does.
+			qty := 1.0
+			if it.Qty != nil {
+				qty = *it.Qty
+			}
+			unit := it.Unit
+			if strings.TrimSpace(unit) == "" {
+				unit = "serving"
+			}
+			if _, err := s.db.ExecContext(r.Context(), `
+				INSERT INTO meal_items (meal_id, name, qty, unit, kcal, protein_g, carbs_g, fat_g, sort_order)
+				VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+				id, strings.TrimSpace(it.Name), qty, unit,
+				it.Kcal, it.ProteinG, it.CarbsG, it.FatG, i); err != nil {
+				respondError(w, http.StatusInternalServerError, "could not update meal", "internal")
+				return
+			}
+		}
 	}
 
 	meal, err := s.mealByID(r.Context(), id)
