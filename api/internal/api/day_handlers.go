@@ -439,7 +439,22 @@ func (s *Server) HandleUpdateDay(w http.ResponseWriter, r *http.Request) {
 // ---- helpers ----
 
 // ensureDay returns the id of the day row for onDate, creating it if needed.
+// errFutureDay is returned when something tries to create a day that has not
+// happened yet.
+var errFutureDay = errors.New("that day has not happened yet")
+
 func (s *Server) ensureDay(ctx context.Context, programID int64, startDate, onDate string) (int64, error) {
+	// Timezones run from UTC-12 to UTC+14, so somebody's local date is never
+	// more than one day ahead of UTC's. Bounding on that keeps the guard
+	// correct without the caller's zone: it refuses a day that is genuinely in
+	// the future everywhere on earth, and never refuses somebody's real today.
+	return s.ensureDayOn(ctx, programID, startDate, onDate,
+		program.LocalDate(time.Now().AddDate(0, 0, 1), time.UTC))
+}
+
+// ensureDayOn is ensureDay with the caller's idea of today, so the guard uses
+// the person's own timezone where one is available.
+func (s *Server) ensureDayOn(ctx context.Context, programID int64, startDate, onDate, today string) (int64, error) {
 	var id int64
 	err := s.db.QueryRowContext(ctx,
 		`SELECT id FROM days WHERE program_id = ? AND on_date = ?`, programID, onDate).Scan(&id)
@@ -453,6 +468,12 @@ func (s *Server) ensureDay(ctx context.Context, programID int64, startDate, onDa
 	dayNumber := program.DayNumber(startDate, onDate)
 	if dayNumber < 1 {
 		return 0, errors.New("date is before the program start")
+	}
+	// A day that has not happened yet has nothing to record, and creating a
+	// row for one leaves an orphan sitting in the calendar and the counts
+	// forever. Reading a future day is fine; materialising it is not.
+	if onDate > today {
+		return 0, errFutureDay
 	}
 
 	res, err := s.db.ExecContext(ctx,

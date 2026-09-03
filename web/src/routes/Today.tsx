@@ -22,6 +22,10 @@ export function Today() {
   // The meal being edited, or null for a new one.
   const [editingMeal, setEditingMeal] = useState<Meal | null>(null)
   const [summary, setSummary] = useState<Summary | null>(null)
+  // Which day is on screen. Null means today, and stays null so the page keeps
+  // following the date over midnight rather than pinning to whatever day it
+  // was when it loaded.
+  const [viewDay, setViewDay] = useState<number | null>(null)
 
   // Tracks whether the day was already complete, so the celebration fires on
   // the transition rather than on every refetch of a finished day.
@@ -32,7 +36,13 @@ export function Today() {
 
   const load = useCallback(async () => {
     try {
-      const [p, d] = await Promise.all([api.activeProgram(), api.today()])
+      const p = await api.activeProgram()
+      // Past days are fetched by number; today comes from its own endpoint so
+      // it stays correct as the date rolls over.
+      const d =
+        viewDay === null || viewDay === p.current_day
+          ? await api.today()
+          : await api.getDay(p.id, viewDay)
       setProgram(p)
 
       // The summary is a nice-to-have beside the day itself: if it fails, the
@@ -58,7 +68,7 @@ export function Today() {
     } finally {
       setLoading(false)
     }
-  }, [navigate])
+  }, [navigate, viewDay])
 
   useEffect(() => {
     load()
@@ -126,6 +136,36 @@ export function Today() {
 
       <header className="animate-slide-up">
         <div className="flex items-end justify-between">
+          <div className="flex items-end gap-3">
+            {/* Stepping back through the run. Forward only exists once you
+                have gone back — there is nothing ahead to look at, and a day
+                that has not happened cannot be filled in. */}
+            {!notStarted && (
+              <div className="flex items-center gap-1 pb-1">
+                <button
+                  type="button"
+                  onClick={() => setViewDay(Math.max(1, day.day_number - 1))}
+                  disabled={day.day_number <= 1}
+                  aria-label="Previous day"
+                  className="rounded-lg p-1.5 text-ink-500 transition hover:bg-ink-850 hover:text-ink-200 disabled:pointer-events-none disabled:opacity-25"
+                >
+                  <Chevron dir="left" />
+                </button>
+                <button
+                  type="button"
+                  onClick={() =>
+                    setViewDay(
+                      day.day_number + 1 >= program.current_day ? null : day.day_number + 1,
+                    )
+                  }
+                  disabled={day.day_number >= program.current_day}
+                  aria-label="Next day"
+                  className="rounded-lg p-1.5 text-ink-500 transition hover:bg-ink-850 hover:text-ink-200 disabled:pointer-events-none disabled:opacity-25"
+                >
+                  <Chevron dir="right" />
+                </button>
+              </div>
+            )}
           <div>
             <p className="text-sm text-ink-500">
               {new Date(`${notStarted ? program.start_date : day.date}T12:00:00`).toLocaleDateString(
@@ -143,6 +183,7 @@ export function Today() {
                 </>
               )}
             </h1>
+            </div>
           </div>
           <DayRing progress={pct} complete={day.status === 'complete'} />
         </div>
@@ -392,5 +433,24 @@ function Macro({ label, value, unit }: { label: string; value: number; unit: str
       </p>
       <p className="text-[11px] text-ink-600">{label}</p>
     </div>
+  )
+}
+
+function Chevron({ dir }: { dir: 'left' | 'right' }) {
+  return (
+    <svg
+      width="20"
+      height="20"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden
+      style={dir === 'right' ? { transform: 'rotate(180deg)' } : undefined}
+    >
+      <path d="M15 5l-7 7 7 7" />
+    </svg>
   )
 }

@@ -306,14 +306,27 @@ func (s *Server) storeStravaActivity(
 	localDate := a.LocalDate()
 
 	// Map onto a day of the program, when the activity falls inside one.
+	//
+	// Anything outside the window is skipped entirely rather than stored
+	// unlinked. Only one program runs at a time, and a swim from a fortnight
+	// before it started is not part of this attempt — keeping it would put
+	// rows in the activity list and the heart-rate history that belong to no
+	// day and answer no question. Strava remains the record of everything;
+	// this is the record of one attempt.
 	var dayID *int64
-	if haveProgram && localDate != "" {
-		if n := program.DayNumber(startDate, localDate); n >= 1 && n <= length {
-			if id, err := s.ensureDay(ctx, programID, startDate, localDate); err == nil {
-				dayID = &id
-			}
-		}
+	if !haveProgram || localDate == "" {
+		return nil
 	}
+	if n := program.DayNumber(startDate, localDate); n < 1 || n > length {
+		return nil
+	}
+	id, err := s.ensureDay(ctx, programID, startDate, localDate)
+	if err != nil {
+		// A day that has not happened yet, or one before the start. Nothing
+		// to attach the activity to.
+		return nil
+	}
+	dayID = &id
 
 	if _, err := s.db.ExecContext(ctx, `
 		INSERT INTO strava_activities (
