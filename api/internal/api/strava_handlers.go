@@ -479,7 +479,9 @@ func (s *Server) tickWorkoutTasks(ctx context.Context, r *http.Request, programI
 		}
 	}
 
-	if err := s.refreshDayStatus(r, programID, dayID); err != nil {
+	// No consequence: an import runs unattended and on past days, so it may
+	// record progress but must never end the attempt.
+	if err := s.refreshDayStatusNoConsequence(r, programID, dayID); err != nil {
 		s.log.Error("refresh day after strava import", zap.Error(err))
 	}
 }

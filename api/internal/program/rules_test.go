@@ -315,3 +315,57 @@ func TestJournalIsOptionalByDefault(t *testing.T) {
 		t.Fatal("no journal task in the default template")
 	}
 }
+
+// A background import must never be the thing that ends somebody's run.
+//
+// This is the shape of a real incident: an unattended Strava sync imported
+// yesterday's walk, which re-evaluated yesterday, found the indoor workout
+// 31 minutes against a 45-minute target, and failed a live attempt while the
+// person was not even in the app.
+//
+// The rule itself is right — a missed day under strict restart does end the
+// attempt. What was wrong is who triggered it. These pin the rule so the
+// consequence stays exactly as strong, and the guard against background
+// callers lives at the call site.
+func TestAPastIncompleteDayStillFailsAStrictRun(t *testing.T) {
+	outcome := EvaluateDay("2026-09-02", "2026-09-03", 1, 75, false, true)
+
+	if outcome.DayStatus != StatusMissed {
+		t.Errorf("DayStatus = %q, want missed", outcome.DayStatus)
+	}
+	if outcome.ProgramStatus != ProgramFailed {
+		t.Errorf("ProgramStatus = %q, want failed", outcome.ProgramStatus)
+	}
+	if !outcome.ShouldRestart {
+		t.Error("a missed day under strict restart must still restart the run")
+	}
+}
+
+func TestTodayIsNeverMissedWhileItIsStillToday(t *testing.T) {
+	// The other half of the incident: an import touching *today* must not
+	// judge it, because the day is not over.
+	outcome := EvaluateDay("2026-09-03", "2026-09-03", 2, 75, false, true)
+
+	if outcome.DayStatus != StatusPending {
+		t.Errorf("DayStatus = %q, want pending — the day is not over", outcome.DayStatus)
+	}
+	if outcome.ProgramStatus != "" {
+		t.Errorf("ProgramStatus = %q; an unfinished today must not end the run", outcome.ProgramStatus)
+	}
+}
+
+func TestAShortDurationTaskIsNotComplete(t *testing.T) {
+	// 31 minutes against a 45-minute target is what actually made the day
+	// incomplete. Partial progress must never read as done.
+	target := 45.0
+	task := Task{ID: 1, Kind: KindDuration, TargetNum: &target, Required: true}
+
+	logged := 31.0
+	if EntrySatisfies(task, Entry{ValueNum: &logged, Completed: true}) {
+		t.Error("31 of 45 minutes counted as complete")
+	}
+	met := 45.0
+	if !EntrySatisfies(task, Entry{ValueNum: &met, Completed: true}) {
+		t.Error("45 of 45 minutes did not count as complete")
+	}
+}

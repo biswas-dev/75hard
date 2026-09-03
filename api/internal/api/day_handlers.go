@@ -472,6 +472,25 @@ func (s *Server) ensureDay(ctx context.Context, programID int64, startDate, onDa
 // refreshDayStatus re-evaluates the day against the rules and, when the rules
 // say the attempt is over, updates the program too.
 func (s *Server) refreshDayStatus(r *http.Request, programID, dayID int64) error {
+	return s.refreshDay(r, programID, dayID, true)
+}
+
+// refreshDayStatusNoConsequence recomputes a day without ever ending the
+// attempt.
+//
+// Background work uses this. An unattended Strava import must be able to
+// record that a workout happened without also deciding, on the person's
+// behalf and while they are not looking, that their run is over — which is
+// exactly what it did: importing yesterday's walk re-evaluated yesterday,
+// found it a minute short under strict rules, and failed a live attempt.
+//
+// Ending a run is a consequence somebody should meet in the app, having seen
+// the day that caused it. The rule is unchanged; only who may trigger it is.
+func (s *Server) refreshDayStatusNoConsequence(r *http.Request, programID, dayID int64) error {
+	return s.refreshDay(r, programID, dayID, false)
+}
+
+func (s *Server) refreshDay(r *http.Request, programID, dayID int64, allowConsequence bool) error {
 	ctx := r.Context()
 
 	var (
@@ -512,8 +531,9 @@ func (s *Server) refreshDayStatus(r *http.Request, programID, dayID int64) error
 		return err
 	}
 
-	// Only ever move an active program; never resurrect one the user ended.
-	if outcome.ProgramStatus != "" && status == program.ProgramActive {
+	// Only ever move an active program; never resurrect one the user ended,
+	// and never end one from a background job.
+	if allowConsequence && outcome.ProgramStatus != "" && status == program.ProgramActive {
 		if _, err := s.db.ExecContext(ctx,
 			`UPDATE programs SET status = ?, ended_at = CURRENT_TIMESTAMP WHERE id = ?`,
 			outcome.ProgramStatus, programID); err != nil {
