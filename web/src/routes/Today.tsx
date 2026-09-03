@@ -315,16 +315,10 @@ export function Today() {
           <ul className="mb-3 divide-y divide-ink-800">
             {day.meals.map((meal) => (
               <li key={meal.id} className="flex items-center gap-3 py-2.5">
-                {meal.photo_url && (
-                  <AuthImage
-                    src={`${meal.photo_url}?size=thumb`}
-                    alt={meal.name || 'Meal'}
-                    className="h-10 w-10 shrink-0 rounded-lg object-cover"
-                  />
-                )}
-                {/* The whole row opens the meal. A meal saved without
-                    calories -- which is what a failed estimate leaves -- was
-                    otherwise only deletable and retypeable. */}
+                {/* The whole row opens the meal, photo included — the
+                    thumbnail is the most obvious thing to reach for, and a
+                    meal saved without calories, which is what a failed
+                    estimate leaves, was otherwise only deletable. */}
                 <button
                   type="button"
                   onClick={() => {
@@ -334,6 +328,13 @@ export function Today() {
                   className="flex min-w-0 flex-1 items-center gap-3 text-left"
                   title="Open this meal to edit it or estimate its calories"
                 >
+                  {meal.photo_url && (
+                    <AuthImage
+                      src={`${meal.photo_url}?size=thumb`}
+                      alt={meal.name || 'Meal'}
+                      className="h-10 w-10 shrink-0 rounded-lg object-cover"
+                    />
+                  )}
                   <span className="min-w-0 flex-1">
                     <span className="block truncate text-ink-200">{meal.name || meal.slot}</span>
                     <span className="text-xs capitalize text-ink-600">
