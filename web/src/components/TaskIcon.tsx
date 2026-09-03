@@ -34,6 +34,12 @@ const paths: Record<string, JSX.Element> = {
     </>
   ),
   check: <path d="M20 6 9 17l-5-5" />,
+  pen: (
+    <>
+      <path d="M4 20h4L20 8a2.8 2.8 0 0 0-4-4L4 16v4Z" strokeLinejoin="round" />
+      <path d="M14.5 5.5 18.5 9.5" />
+    </>
+  ),
   lotus: (
     <>
       <path d="M12 4c1.8 1.9 2.7 4 2.7 6.4S13.8 15 12 16.6c-1.8-1.6-2.7-3.8-2.7-6.2S10.2 5.9 12 4Z" />

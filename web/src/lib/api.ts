@@ -10,6 +10,7 @@ import type {
   Day,
   DaySummary,
   Grid,
+  JournalEntry,
   Meal,
   Meditation,
   Photo,
@@ -380,6 +381,37 @@ class ApiClient {
   /** Credit left with providers that publish it. Cached server-side. */
   aiBalance() {
     return this.request<{ balances: ProviderBalance[]; cached: boolean }>('/api/ai/balance')
+  }
+
+  journal(query?: string) {
+    const q = query ? `?q=${encodeURIComponent(query)}` : ''
+    return this.request<JournalEntry[]>(`/api/journal${q}`)
+  }
+
+  createJournal(body: { day_number?: number; title?: string; body: string }) {
+    return this.request<JournalEntry>('/api/journal', {
+      method: 'POST',
+      body: JSON.stringify(body),
+    })
+  }
+
+  updateJournal(id: number, body: { title?: string; body?: string }) {
+    return this.request<JournalEntry>(`/api/journal/${id}`, {
+      method: 'PATCH',
+      body: JSON.stringify(body),
+    })
+  }
+
+  deleteJournal(id: number) {
+    return this.request<{ ok: boolean }>(`/api/journal/${id}`, { method: 'DELETE' })
+  }
+
+  uploadJournal(file: File, opts: { dayNumber?: number; title?: string } = {}) {
+    const form = new FormData()
+    form.append('file', file, file.name)
+    if (opts.dayNumber) form.append('day_number', String(opts.dayNumber))
+    if (opts.title) form.append('title', opts.title)
+    return this.request<JournalEntry>('/api/journal/upload', { method: 'POST', body: form })
   }
 
   aiKeys() {

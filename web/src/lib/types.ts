@@ -39,7 +39,9 @@ export interface ProgramTask {
   sort_order: number
   required: boolean
   color: string
-  tracker: '' | 'nutrition' | 'workout' | 'meditation'
+  tracker: '' | 'nutrition' | 'workout' | 'meditation' | 'journal'
+  /** Hidden optional tasks keep their history but leave the day and the grid. */
+  hidden?: boolean
 }
 
 export interface Program {
@@ -77,7 +79,7 @@ export interface Entry {
   done: boolean
   completed_at: string | null
   /** Optional richer panel behind the task; never gates completion. */
-  tracker: '' | 'nutrition' | 'workout' | 'meditation'
+  tracker: '' | 'nutrition' | 'workout' | 'meditation' | 'journal'
   color: string
 }
 
@@ -141,6 +143,8 @@ export interface Meditation {
   source: string
   style: 'guided' | 'unguided' | 'breathwork' | 'body_scan' | 'walking' | 'other'
   notes: string
+  /** A line about the sitting itself, kept separate from the journal. */
+  reflection: string
   started_at?: string
   created_at: string
 }
@@ -482,4 +486,29 @@ export interface AIKeys {
   /** False when the server has no encryption key, so nothing can be stored. */
   configurable: boolean
   providers: ProviderInfo[]
+}
+
+// ---- journal ----
+
+export interface JournalEntry {
+  id: number
+  day_id?: number
+  day_number?: number
+  title: string
+  kind: 'typed' | 'pdf'
+  body: string
+  file_name?: string
+  file_bytes?: number
+  page_count?: number
+  /**
+   * Text read out of an uploaded page. Kept apart from `body` so a machine
+   * transcription is never mistaken for what was actually written.
+   */
+  parsed_text?: string
+  parse_status: '' | 'pending' | 'done' | 'failed'
+  parse_error?: string
+  has_file: boolean
+  created_at: string
+  /** Set on search results: the matching text with the term marked. */
+  snippet?: string
 }

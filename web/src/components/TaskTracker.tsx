@@ -1,5 +1,7 @@
 import { useEffect, useState } from 'react'
 import { api } from '../lib/api'
+import { JournalTracker } from './JournalTracker'
+import { MeditationTimer } from './MeditationTimer'
 import { PhotoUpload } from './PhotoUpload'
 import type { Day, Entry, Meal } from '../lib/types'
 
@@ -27,6 +29,9 @@ export function TaskTracker({ entry, day, onChanged, onLogMeal }: Props) {
   }
   if (entry.tracker === 'meditation') {
     return <MeditationTracker entry={entry} day={day} onChanged={onChanged} />
+  }
+  if (entry.tracker === 'journal') {
+    return <JournalTracker entry={entry} day={day} onChanged={onChanged} />
   }
   return null
 }
@@ -277,28 +282,37 @@ function MeditationTracker({ entry, day, onChanged }: { entry: Entry; day: Day; 
   const [minutes, setMinutes] = useState(10)
   const [source, setSource] = useState('')
   const [style, setStyle] = useState('guided')
+  // A line about the sitting itself. Deliberately not the journal: how ten
+  // minutes went and a journal entry are different kinds of writing.
+  const [reflection, setReflection] = useState('')
   const [busy, setBusy] = useState(false)
 
   const sessions = day.meditations ?? []
   const total = day.totals.meditation_minutes ?? 0
 
-  async function add() {
-    if (busy || minutes <= 0) return
+  // Shared by the timer and the manual form, so a timed sitting and a typed
+  // one produce exactly the same record.
+  async function log(mins: number) {
+    if (busy || mins <= 0) return
     setBusy(true)
     try {
       await api.createMeditation({
         day_number: day.day_number,
-        minutes,
+        minutes: mins,
         source: source.trim(),
         style,
+        reflection: reflection.trim(),
         task_id: entry.task_id,
       })
       setSource('')
+      setReflection('')
       onChanged()
     } finally {
       setBusy(false)
     }
   }
+
+  const add = () => log(minutes)
 
   return (
     <div className="space-y-4">
@@ -309,6 +323,10 @@ function MeditationTracker({ entry, day, onChanged }: { entry: Entry; day: Day; 
           <span className="text-ink-600"> min</span>
         </span>
       </div>
+
+      {/* Sit with the timer, or type it in afterwards — both write the same
+          record, and the source and reflection below apply either way. */}
+      <MeditationTimer onFinish={log} busy={busy} />
 
       {sessions.length > 0 && (
         <ul className="divide-y divide-ink-800">
@@ -321,6 +339,11 @@ function MeditationTracker({ entry, day, onChanged }: { entry: Entry; day: Day; 
                 <span className="text-xs text-ink-600">
                   {MEDITATION_STYLES.find((s) => s.value === m.style)?.label ?? m.style}
                 </span>
+                {m.reflection && (
+                  <span className="mt-0.5 block text-xs italic leading-relaxed text-ink-500">
+                    {m.reflection}
+                  </span>
+                )}
               </span>
               <span className="shrink-0 font-mono text-sm text-ink-400">{m.minutes} min</span>
               <button
@@ -340,7 +363,7 @@ function MeditationTracker({ entry, day, onChanged }: { entry: Entry; day: Day; 
 
       <div>
         <label className="mb-1.5 block text-xs text-ink-500" htmlFor="meditation-minutes">
-          How long
+          Or log one you have already done
         </label>
         <div className="flex flex-wrap gap-1.5">
           {[5, 10, 15, 20, 30].map((m) => (
@@ -415,6 +438,19 @@ function MeditationTracker({ entry, day, onChanged }: { entry: Entry; day: Day; 
             {s.label}
           </button>
         ))}
+      </div>
+
+      <div>
+        <label className="mb-1.5 block text-xs text-ink-500" htmlFor="meditation-reflection">
+          How was it?
+        </label>
+        <textarea
+          id="meditation-reflection"
+          value={reflection}
+          onChange={(e) => setReflection(e.target.value)}
+          placeholder="Optional. A line about the sitting — restless, easier than yesterday, kept losing the breath."
+          className="min-h-16 w-full resize-y rounded-lg border border-ink-800 bg-ink-850 px-3 py-2 text-sm text-ink-200 placeholder:text-ink-600"
+        />
       </div>
 
       <button className="btn-ghost w-full py-2 text-sm" onClick={add} disabled={busy || minutes <= 0}>
