@@ -252,11 +252,22 @@ func (s *Server) syncStrava(ctx context.Context, userID int64, r *http.Request) 
 		}
 	}
 
-	// Overlap the window by a day: activities are often edited after upload,
-	// and re-reading one is cheap because the upsert updates in place.
+	// Strava's "after" filters on when an activity *started*, not when it was
+	// uploaded, and that distinction matters. A watch that syncs days late, or
+	// an activity entered by hand and backdated, arrives with an old start
+	// time — so a window that tracks the last sync closely would never see it.
+	//
+	// With polling every couple of hours the window would otherwise sit
+	// permanently at a day wide, making any late upload invisible for good.
+	// A week of overlap costs exactly the same single request and re-reading
+	// an activity is free, because the upsert updates it in place.
+	const overlap = 7
+
 	after := time.Now().AddDate(0, 0, -30)
-	if lastSync.Valid && lastSync.Time.After(after) {
-		after = lastSync.Time.AddDate(0, 0, -1)
+	if lastSync.Valid {
+		if widened := lastSync.Time.AddDate(0, 0, -overlap); widened.After(after) {
+			after = widened
+		}
 	}
 
 	activities, err := client.Activities(ctx, accessToken, after, 100)
