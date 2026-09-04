@@ -3,7 +3,7 @@ import { api } from '../lib/api'
 import { JournalTracker } from './JournalTracker'
 import { MeditationTimer } from './MeditationTimer'
 import { PhotoUpload } from './PhotoUpload'
-import type { Day, Entry, Meal } from '../lib/types'
+import type { Day, Entry, Meal, Workout } from '../lib/types'
 
 interface Props {
   entry: Entry
@@ -159,19 +159,81 @@ function NutritionTracker({
   )
 }
 
+interface WorkoutSession {
+  session: number
+  minutes: number
+  outdoor: boolean
+  startedAt: string
+  parts: Workout[]
+}
+
+/**
+ * Fold the day's records into the sessions the server numbered them with.
+ *
+ * The grouping itself is the server's — a record carries the session it
+ * belongs to — so the app cannot disagree with what the day was scored on.
+ */
+function groupSessions(workouts: Workout[]): WorkoutSession[] {
+  const by = new Map<number, WorkoutSession>()
+  for (const w of workouts) {
+    const n = w.session || 1
+    const found = by.get(n)
+    if (found) {
+      found.minutes += w.minutes
+      found.outdoor = found.outdoor || w.kind === 'outdoor'
+      found.startedAt = found.startedAt || formatStart(w.started_at)
+      found.parts.push(w)
+      continue
+    }
+    by.set(n, {
+      session: n,
+      minutes: w.minutes,
+      outdoor: w.kind === 'outdoor',
+      startedAt: formatStart(w.started_at),
+      parts: [w],
+    })
+  }
+  return [...by.values()].sort((a, b) => a.session - b.session)
+}
+
+function formatStart(v?: string): string {
+  if (!v) return ''
+  const t = new Date(v.replace(' +0000 UTC', 'Z').replace(' ', 'T'))
+  if (Number.isNaN(t.getTime())) return ''
+  return t.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })
+}
+
+/**
+ * Which session a task is credited from: the longest one outdoors for the
+ * outdoor task, and the longest after the longest for the second workout.
+ * Mirrors WorkoutCredit on the server.
+ */
+function creditedFor(key: string, sessions: WorkoutSession[]): number {
+  if (sessions.length === 0) return 0
+  if (key === 'workout_outdoor') {
+    const outdoors = sessions.filter((s) => s.outdoor)
+    if (outdoors.length === 0) return 0
+    return outdoors.reduce((best, s) => (s.minutes > best.minutes ? s : best)).session
+  }
+  if (sessions.length < 2) return 0
+  const ranked = [...sessions].sort((a, b) => b.minutes - a.minutes)
+  return ranked[1].session
+}
+
 function WorkoutTracker({ entry, day, onChanged }: { entry: Entry; day: Day; onChanged: () => void }) {
   // Where the session happened, defaulted from the task but free to change:
   // the second workout may be outdoors too, and often is.
   const [kind, setKind] = useState<'indoor' | 'outdoor'>(
     entry.key === 'workout_outdoor' ? 'outdoor' : 'indoor',
   )
-  // Every session on the day, not just those matching this task's location.
+  // The day's records folded into the sessions the server grouped them into.
   //
-  // The two workout tasks are no longer an indoor slot and an outdoor slot —
-  // they are "one of them was outside" and "there was a second one" — so
-  // filtering by kind would hide the very session that satisfied the task.
-  const sessions = day.workouts
+  // Showing one flat list under both tasks read as though the morning walk
+  // were the second workout. A record belongs to a session, and a session is
+  // what a task is credited from, so that is what this shows.
+  const sessions = groupSessions(day.workouts)
   const credited = entry.value ?? 0
+  const creditedSession = creditedFor(entry.key, sessions)
 
   const [activity, setActivity] = useState('')
   const [minutes, setMinutes] = useState('')
@@ -211,31 +273,58 @@ function WorkoutTracker({ entry, day, onChanged }: { entry: Entry; day: Day; onC
           : 'Your longest session after the longest. Sessions starting within 2 hours of each other count as one.'}
       </p>
 
-      {sessions.length > 0 && (
-        <ul className="divide-y divide-ink-800">
-          {sessions.map((w) => (
-            <li key={w.id} className="flex items-center gap-3 py-2">
-              <span className="min-w-0 flex-1 truncate text-sm text-ink-200">
-                {w.activity || 'Session'}
-              </span>
-              <span className="shrink-0 text-xs uppercase tracking-wide text-ink-600">
-                {w.kind}
-              </span>
-              <span className="shrink-0 font-mono text-sm text-ink-400">{w.minutes} min</span>
-              <button
-                aria-label="Remove session"
-                className="shrink-0 px-1 text-ink-600 hover:text-red-400"
-                onClick={async () => {
-                  await api.deleteWorkout(w.id)
-                  onChanged()
-                }}
-              >
-                ×
-              </button>
-            </li>
-          ))}
-        </ul>
-      )}
+      {sessions.map((s) => {
+        const counts = s.session === creditedSession
+        return (
+          <div
+            key={s.session}
+            className={`rounded-xl border p-3 ${
+              counts ? 'border-flame-500/40 bg-flame-500/5' : 'border-ink-800'
+            }`}
+          >
+            <div className="flex items-center gap-2">
+              <span className="text-sm font-medium text-ink-200">Workout {s.session}</span>
+              {s.outdoor && (
+                <span className="text-xs uppercase tracking-wide text-moss-400">outdoors</span>
+              )}
+              <span className="ml-auto font-mono text-sm text-ink-300">{s.minutes} min</span>
+            </div>
+            {s.startedAt && (
+              <p className="mt-0.5 text-xs text-ink-600">
+                started {s.startedAt}
+                {counts && <span className="text-flame-400"> · counts for this task</span>}
+              </p>
+            )}
+            {!s.startedAt && counts && (
+              <p className="mt-0.5 text-xs text-flame-400">counts for this task</p>
+            )}
+
+            <ul className="mt-2 divide-y divide-ink-800/60">
+              {s.parts.map((w) => (
+                <li key={w.id} className="flex items-center gap-3 py-1.5">
+                  <span className="min-w-0 flex-1 truncate text-sm text-ink-300">
+                    {w.activity || 'Session'}
+                  </span>
+                  <span className="shrink-0 text-xs uppercase tracking-wide text-ink-600">
+                    {w.kind}
+                  </span>
+                  <span className="shrink-0 font-mono text-sm text-ink-400">{w.minutes} min</span>
+                  <button
+                    aria-label="Remove session"
+                    className="shrink-0 px-1 text-ink-600 hover:text-red-400"
+                    onClick={async () => {
+                      await api.deleteWorkout(w.id)
+                      onChanged()
+                    }}
+                  >
+                    ×
+                  </button>
+                </li>
+              ))}
+            </ul>
+          </div>
+        )
+      })}
 
       <div className="grid grid-cols-2 gap-2">
         {(['outdoor', 'indoor'] as const).map((k) => (

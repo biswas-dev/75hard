@@ -2,6 +2,7 @@ package api
 
 import (
 	"context"
+	"database/sql"
 	"net/http"
 	"strconv"
 	"strings"
@@ -58,6 +59,11 @@ type Workout struct {
 	Kcal      *float64 `json:"kcal"`
 	Notes     string   `json:"notes"`
 	CreatedAt string   `json:"created_at"`
+	// StartedAt is empty for a hand-logged entry with no time on it.
+	StartedAt string `json:"started_at,omitempty"`
+	// Session is the 1-based workout this record belongs to, so the UI can
+	// show which effort each row is part of rather than one flat list.
+	Session int `json:"session"`
 }
 
 type mealItemPayload struct {
@@ -544,7 +550,7 @@ func (s *Server) workoutByID(ctx context.Context, id int64) (Workout, error) {
 
 func (s *Server) workoutsForDay(ctx context.Context, dayID int64) ([]Workout, error) {
 	rows, err := s.db.QueryContext(ctx,
-		`SELECT id, day_id, kind, activity, minutes, kcal, notes, created_at
+		`SELECT id, day_id, kind, activity, minutes, kcal, notes, created_at, started_at
 		 FROM workouts WHERE day_id = ? ORDER BY created_at, id`, dayID)
 	if err != nil {
 		return nil, err
@@ -559,7 +565,47 @@ func (s *Server) workoutsForDay(ctx context.Context, dayID int64) ([]Workout, er
 		}
 		out = append(out, wo)
 	}
-	return out, rows.Err()
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	numberSessions(out)
+	return out, nil
+}
+
+// parseStoredTime reads the timestamp forms SQLite hands back here: Go's own
+// rendering of a time.Time, which carries a " +0000 UTC" suffix, and the plain
+// form a SQL default writes.
+func parseStoredTime(v string) (time.Time, bool) {
+	v = strings.TrimSpace(strings.TrimSuffix(strings.TrimSpace(v), "+0000 UTC"))
+	for _, layout := range []string{"2006-01-02 15:04:05.999999999", "2006-01-02 15:04:05", time.RFC3339} {
+		if t, err := time.Parse(layout, v); err == nil {
+			return t, true
+		}
+	}
+	return time.Time{}, false
+}
+
+// numberSessions stamps each record with the workout it belongs to, using the
+// same grouping the server credits the tasks from — so what the app shows and
+// what the day is scored on cannot drift apart.
+func numberSessions(out []Workout) {
+	recs := make([]program.WorkoutRecord, 0, len(out))
+	for _, wo := range out {
+		rec := program.WorkoutRecord{ID: wo.ID, Kind: wo.Kind, Minutes: wo.Minutes}
+		if t, ok := parseStoredTime(wo.StartedAt); ok {
+			rec.StartedAt = &t
+		}
+		recs = append(recs, rec)
+	}
+	for i, sess := range program.GroupSessions(recs, program.SessionGap) {
+		for _, id := range sess.Records {
+			for j := range out {
+				if out[j].ID == id {
+					out[j].Session = i + 1
+				}
+			}
+		}
+	}
 }
 
 func scanMeal(row scanner) (Meal, error) {
@@ -576,8 +622,12 @@ func scanMeal(row scanner) (Meal, error) {
 
 func scanWorkout(row scanner) (Workout, error) {
 	var wo Workout
+	var started sql.NullString
 	err := row.Scan(&wo.ID, &wo.DayID, &wo.Kind, &wo.Activity, &wo.Minutes,
-		&wo.Kcal, &wo.Notes, &wo.CreatedAt)
+		&wo.Kcal, &wo.Notes, &wo.CreatedAt, &started)
+	if started.Valid {
+		wo.StartedAt = started.String
+	}
 	return wo, err
 }
 

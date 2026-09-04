@@ -158,6 +158,10 @@ export interface Workout {
   kcal: number | null
   notes: string
   created_at: string
+  /** Absent for a hand-logged entry with no time on it. */
+  started_at?: string
+  /** 1-based workout this record belongs to, grouped by the server. */
+  session: number
 }
 
 export interface Totals {
