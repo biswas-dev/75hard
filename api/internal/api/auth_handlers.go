@@ -141,6 +141,14 @@ func (s *Server) HandleLogin(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// A correct password on an account with two-factor buys a challenge, not a
+	// session. The challenge is signed with a different key, so it cannot be
+	// presented to the rest of the API as though sign-in had finished.
+	if s.twoFactorRequired(r, id) {
+		s.issueChallenge(w, id, email)
+		return
+	}
+
 	user, err := s.getUser(r, id)
 	if err != nil {
 		respondError(w, http.StatusInternalServerError, "could not load account", "internal")

@@ -102,6 +102,265 @@ paths:
                 password: { type: string }
       responses:
         "200":
+          description: |
+            Either a session, or a two-factor challenge when the account needs
+            a code. Check for `two_factor` before assuming sign-in finished:
+            the challenge is signed with a different key and is not accepted
+            anywhere else in this API.
+          content:
+            application/json:
+              schema:
+                oneOf:
+                  - type: object
+                    properties:
+                      token: { type: string }
+                      user: { $ref: "#/components/schemas/User" }
+                  - type: object
+                    properties:
+                      two_factor: { type: boolean, enum: [true] }
+                      challenge:
+                        type: string
+                        description: Present it to /api/auth/2fa/verify with a code. Valid for five minutes.
+        "401": { $ref: "#/components/responses/Unauthorized" }
+
+  /api/auth/2fa/verify:
+    post:
+      tags: [Auth]
+      summary: Finish a sign-in that stopped for a code
+      description: |
+        Accepts either a current authenticator code or an unused recovery code.
+        A recovery code is spent the moment it works.
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [challenge, code]
+              properties:
+                challenge: { type: string }
+                code: { type: string }
+      responses:
+        "200":
+          description: A session token and the user
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  token: { type: string }
+                  user: { $ref: "#/components/schemas/User" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+
+  /api/2fa:
+    get:
+      tags: [Auth]
+      summary: What second factors this account has
+      responses:
+        "200":
+          description: Second-factor status
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  enabled: { type: boolean }
+                  pending:
+                    type: boolean
+                    description: A secret exists but no code has proved it yet.
+                  configurable:
+                    type: boolean
+                    description: False when the server has no encryption key to store a secret with.
+                  confirmed_at: { type: string }
+                  recovery_codes_left: { type: integer }
+                  passkey_count: { type: integer }
+                  passkeys_usable: { type: boolean }
+
+  /api/2fa/setup:
+    post:
+      tags: [Auth]
+      summary: Generate a secret to enrol an authenticator app
+      description: |
+        Stores the secret unconfirmed and turns nothing on. Only a correct code
+        from the app makes it a requirement, so a mis-scanned QR cannot lock the
+        account out of itself.
+      responses:
+        "200":
+          description: The secret and the otpauth URI to render as a QR code
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  secret: { type: string }
+                  uri: { type: string }
+        "409": { description: Two-factor is already on }
+
+  /api/2fa/confirm:
+    post:
+      tags: [Auth]
+      summary: Prove the secret was scanned and turn two-factor on
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [code]
+              properties:
+                code: { type: string }
+      responses:
+        "200":
+          description: |
+            Enabled, with the recovery codes. They are stored hashed and are
+            returned exactly once — there is no way to read them again.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  enabled: { type: boolean }
+                  recovery_codes:
+                    type: array
+                    items: { type: string }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+
+  /api/2fa/disable:
+    post:
+      tags: [Auth]
+      summary: Turn two-factor off
+      description: |
+        Re-checks the person at the keyboard: a password for a password
+        account, or a current code for one that signs in with Google.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                password: { type: string }
+                code: { type: string }
+      responses:
+        "200": { description: Turned off }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+
+  /api/passkeys:
+    get:
+      tags: [Auth]
+      summary: List registered passkeys
+      responses:
+        "200":
+          description: The account's authenticators
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: object
+                  properties:
+                    id: { type: integer }
+                    name: { type: string }
+                    backed_up:
+                      type: boolean
+                      description: Synced to a password manager rather than bound to one device.
+                    transports: { type: string }
+                    created_at: { type: string }
+                    last_used_at: { type: string }
+
+  /api/passkeys/{passkeyID}:
+    delete:
+      tags: [Auth]
+      summary: Remove a passkey
+      parameters:
+        - name: passkeyID
+          in: path
+          required: true
+          schema: { type: integer }
+      responses:
+        "200": { description: Removed }
+        "404": { description: No such passkey }
+
+  /api/passkeys/register/begin:
+    post:
+      tags: [Auth]
+      summary: Start registering a passkey
+      description: |
+        Returns WebAuthn creation options and a session id. The challenge stays
+        on the server; only the id travels, so the browser cannot choose what
+        its own signature is checked against.
+      responses:
+        "200":
+          description: Creation options
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  session_id: { type: string }
+                  options: { type: object }
+
+  /api/passkeys/register/finish:
+    post:
+      tags: [Auth]
+      summary: Store a newly created passkey
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [session_id, credential]
+              properties:
+                session_id: { type: string }
+                name: { type: string }
+                credential: { type: object }
+      responses:
+        "200": { description: Registered }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+
+  /api/auth/passkeys/login/begin:
+    post:
+      tags: [Auth]
+      summary: Start a passwordless sign-in
+      description: |
+        Asks for no email and reveals nothing about who has an account: a
+        discoverable credential carries the user handle, so the server learns
+        who it is only from a verified assertion.
+      security: []
+      responses:
+        "200":
+          description: Request options
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  session_id: { type: string }
+                  options: { type: object }
+
+  /api/auth/passkeys/login/finish:
+    post:
+      tags: [Auth]
+      summary: Complete a passwordless sign-in
+      description: |
+        No code is asked for afterwards. The authenticator has already checked
+        a fingerprint, a face or a PIN before it would sign anything, so the
+        assertion is itself two factors.
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [session_id, credential]
+              properties:
+                session_id: { type: string }
+                credential: { type: object }
+      responses:
+        "200":
           description: A session token and the user
           content:
             application/json:

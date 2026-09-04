@@ -212,12 +212,24 @@ func main() {
 			r.Post("/login", server.HandleLogin)
 			r.Post("/forgot-password", server.HandleForgotPassword)
 			r.Post("/reset-password", server.HandleResetPassword)
+
+			// Finishing a sign-in that stopped for a second factor. Public by
+			// necessity — there is no session yet — but it carries a signed
+			// challenge that only a correct password can have produced.
+			r.Post("/2fa/verify", server.HandleTwoFactorVerify)
+
+			// Passwordless sign-in. Asks for no email and reveals nothing
+			// about who has an account: the assertion says who it is.
+			r.Post("/passkeys/login/begin", server.HandlePasskeyLoginBegin)
+			r.Post("/passkeys/login/finish", server.HandlePasskeyLoginFinish)
 			r.Get("/config", func(w http.ResponseWriter, r *http.Request) {
 				w.Header().Set("Content-Type", "application/json")
 				_ = writeJSON(w, map[string]bool{
 					"allow_signup": cfg.AllowSignup,
 					"google":       cfg.GoogleClientID != "" && cfg.OAuthEnabled(),
 					"github":       cfg.GitHubClientID != "" && cfg.OAuthEnabled(),
+					// Whether the sign-in page should offer a passkey at all.
+					"passkeys": server.PasskeysEnabled(),
 				})
 			})
 
@@ -248,6 +260,17 @@ func main() {
 			r.Get("/me", server.HandleMe)
 			r.Patch("/me", server.HandleUpdateProfile)
 			r.Post("/me/password", server.HandleChangePassword)
+
+			// Second factors, all against the signed-in account.
+			r.Get("/2fa", server.HandleTwoFactorStatus)
+			r.Post("/2fa/setup", server.HandleTwoFactorSetup)
+			r.Post("/2fa/confirm", server.HandleTwoFactorConfirm)
+			r.Post("/2fa/disable", server.HandleTwoFactorDisable)
+
+			r.Get("/passkeys", server.HandleListPasskeys)
+			r.Delete("/passkeys/{passkeyID}", server.HandleDeletePasskey)
+			r.Post("/passkeys/register/begin", server.HandlePasskeyRegisterBegin)
+			r.Post("/passkeys/register/finish", server.HandlePasskeyRegisterFinish)
 
 			r.Get("/programs", server.HandleListPrograms)
 			r.Post("/programs", server.HandleCreateProgram)

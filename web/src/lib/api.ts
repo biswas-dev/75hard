@@ -15,6 +15,8 @@ import type {
   Meditation,
   Photo,
   Plan,
+  Passkey,
+  PasskeyCeremony,
   Pose,
   ProviderBalance,
   Program,
@@ -24,6 +26,9 @@ import type {
   Stats,
   StravaStatus,
   Summary,
+  TwoFactorChallenge,
+  TwoFactorSetup,
+  TwoFactorStatus,
   User,
   Workout,
 } from './types'
@@ -105,10 +110,78 @@ class ApiClient {
     })
   }
 
+  /**
+   * Sign in with a password.
+   *
+   * Answers with either a session or a two-factor challenge, so the caller has
+   * to look before assuming it is signed in.
+   */
   login(email: string, password: string) {
-    return this.request<AuthResponse>('/api/auth/login', {
+    return this.request<AuthResponse | TwoFactorChallenge>('/api/auth/login', {
       method: 'POST',
       body: JSON.stringify({ email, password }),
+    })
+  }
+
+  /** Finish a sign-in that stopped for a code. */
+  verifyTwoFactor(challenge: string, code: string) {
+    return this.request<AuthResponse>('/api/auth/2fa/verify', {
+      method: 'POST',
+      body: JSON.stringify({ challenge, code }),
+    })
+  }
+
+  twoFactorStatus() {
+    return this.request<TwoFactorStatus>('/api/2fa')
+  }
+
+  twoFactorSetup() {
+    return this.request<TwoFactorSetup>('/api/2fa/setup', { method: 'POST' })
+  }
+
+  twoFactorConfirm(code: string) {
+    return this.request<{ enabled: boolean; recovery_codes: string[] }>('/api/2fa/confirm', {
+      method: 'POST',
+      body: JSON.stringify({ code }),
+    })
+  }
+
+  twoFactorDisable(body: { password?: string; code?: string }) {
+    return this.request<{ ok: boolean }>('/api/2fa/disable', {
+      method: 'POST',
+      body: JSON.stringify({ password: body.password ?? '', code: body.code ?? '' }),
+    })
+  }
+
+  // ---- passkeys ----
+
+  listPasskeys() {
+    return this.request<Passkey[]>('/api/passkeys')
+  }
+
+  deletePasskey(id: number) {
+    return this.request<{ ok: boolean }>(`/api/passkeys/${id}`, { method: 'DELETE' })
+  }
+
+  passkeyRegisterBegin() {
+    return this.request<PasskeyCeremony>('/api/passkeys/register/begin', { method: 'POST' })
+  }
+
+  passkeyRegisterFinish(body: { session_id: string; name: string; credential: unknown }) {
+    return this.request<{ ok: boolean }>('/api/passkeys/register/finish', {
+      method: 'POST',
+      body: JSON.stringify(body),
+    })
+  }
+
+  passkeyLoginBegin() {
+    return this.request<PasskeyCeremony>('/api/auth/passkeys/login/begin', { method: 'POST' })
+  }
+
+  passkeyLoginFinish(body: { session_id: string; credential: unknown }) {
+    return this.request<AuthResponse>('/api/auth/passkeys/login/finish', {
+      method: 'POST',
+      body: JSON.stringify({ ...body, name: '' }),
     })
   }
 

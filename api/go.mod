@@ -3,7 +3,7 @@ module github.com/anchoo2kewl/75hard/api
 go 1.26.4
 
 require (
-	github.com/anchoo2kewl/go-login v0.2.1
+	github.com/anchoo2kewl/go-login v0.3.0
 	github.com/go-chi/chi/v5 v5.3.2
 	github.com/go-chi/cors v1.2.2
 	github.com/golang-jwt/jwt/v5 v5.3.1
@@ -17,6 +17,17 @@ require (
 	github.com/anchoo2kewl/go-api v0.1.0
 	github.com/anchoo2kewl/go-photo v0.1.1
 	github.com/ledongthuc/pdf v0.0.0-20260902151811-0378b83ae5e4
+)
+
+require (
+	github.com/fxamacker/cbor/v2 v2.9.3 // indirect
+	github.com/go-viper/mapstructure/v2 v2.5.0 // indirect
+	github.com/go-webauthn/webauthn v0.18.0 // indirect
+	github.com/go-webauthn/x v0.3.0 // indirect
+	github.com/google/go-tpm v0.9.8 // indirect
+	github.com/philhofer/fwd v1.2.0 // indirect
+	github.com/tinylib/msgp v1.6.4 // indirect
+	github.com/x448/float16 v0.8.4 // indirect
 )
 
 require (

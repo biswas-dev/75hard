@@ -3,6 +3,8 @@ import { useNavigate } from 'react-router-dom'
 import { AiBalanceCard } from '../components/AiBalanceCard'
 import { AiKeysCard } from '../components/AiKeysCard'
 import { OptionalTasksCard } from '../components/OptionalTasksCard'
+import { PasskeysCard } from '../components/PasskeysCard'
+import { TwoFactorCard } from '../components/TwoFactorCard'
 import { ApiTokensCard } from '../components/ApiTokensCard'
 import { StravaCard } from '../components/StravaCard'
 import { api } from '../lib/api'
@@ -205,6 +207,10 @@ export function Settings() {
           )}
         </section>
       )}
+
+      <TwoFactorCard />
+
+      <PasskeysCard />
 
       <OptionalTasksCard />
 

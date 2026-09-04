@@ -23,6 +23,8 @@ export interface AuthConfig {
   allow_signup: boolean
   google: boolean
   github: boolean
+  /** Whether this server can run WebAuthn ceremonies at all. */
+  passkeys: boolean
 }
 
 export type TaskKind = 'check' | 'number' | 'duration' | 'photo' | 'text'
@@ -515,4 +517,52 @@ export interface JournalEntry {
   created_at: string
   /** Set on search results: the matching text with the term marked. */
   snippet?: string
+}
+
+// ---- second factors ----
+
+/**
+ * What a password sign-in answers with when the account needs a code.
+ *
+ * The challenge is signed with a key that is not the session key, so it cannot
+ * be presented to the rest of the API as though sign-in had finished.
+ */
+export interface TwoFactorChallenge {
+  two_factor: true
+  challenge: string
+}
+
+export interface TwoFactorStatus {
+  enabled: boolean
+  /** A secret exists but no code has proved it yet. */
+  pending: boolean
+  /** False when the server has no encryption key, so no secret can be stored. */
+  configurable: boolean
+  confirmed_at?: string
+  recovery_codes_left: number
+  passkey_count: number
+  passkeys_usable: boolean
+}
+
+export interface TwoFactorSetup {
+  /** Grouped for typing in by hand when the QR code cannot be scanned. */
+  secret: string
+  /** The otpauth:// string the QR code encodes. */
+  uri: string
+}
+
+export interface Passkey {
+  id: number
+  name: string
+  /** Synced to a password manager rather than bound to one device. */
+  backed_up: boolean
+  transports?: string
+  created_at: string
+  last_used_at?: string
+}
+
+/** One half of a WebAuthn ceremony: the server's options and its session id. */
+export interface PasskeyCeremony {
+  session_id: string
+  options: { publicKey: Record<string, unknown> } | Record<string, unknown>
 }

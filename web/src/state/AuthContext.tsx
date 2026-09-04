@@ -6,7 +6,15 @@ import type { User } from '../lib/types'
 interface AuthValue {
   user: User | null
   loading: boolean
-  login: (email: string, password: string) => Promise<void>
+  /**
+   * Sign in with a password.
+   *
+   * Returns a challenge when the account needs a code, and null once signed
+   * in — the caller has to look, rather than assume it is done.
+   */
+  login: (email: string, password: string) => Promise<string | null>
+  /** Finish a sign-in that stopped for a code. */
+  completeTwoFactor: (challenge: string, code: string) => Promise<void>
   signup: (email: string, password: string, name: string) => Promise<void>
   loginWithToken: (token: string) => Promise<void>
   logout: () => void
@@ -43,6 +51,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const login = useCallback(async (email: string, password: string) => {
     const res = await api.login(email, password)
+    if ('two_factor' in res) {
+      // A correct password, but sign-in is not finished. No token is stored:
+      // the challenge is not a session and must not be treated as one.
+      return res.challenge
+    }
+    api.setToken(res.token)
+    setUser(res.user)
+    return null
+  }, [])
+
+  const completeTwoFactor = useCallback(async (challenge: string, code: string) => {
+    const res = await api.verifyTwoFactor(challenge, code)
     api.setToken(res.token)
     setUser(res.user)
   }, [])
@@ -69,8 +89,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, [])
 
   const value = useMemo(
-    () => ({ user, loading, login, signup, loginWithToken, logout, refresh }),
-    [user, loading, login, signup, loginWithToken, logout, refresh],
+    () => ({ user, loading, login, completeTwoFactor, signup, loginWithToken, logout, refresh }),
+    [user, loading, login, completeTwoFactor, signup, loginWithToken, logout, refresh],
   )
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>
