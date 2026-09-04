@@ -204,20 +204,28 @@ function formatStart(v?: string): string {
 }
 
 /**
- * Which session a task is credited from: the longest one outdoors for the
- * outdoor task, and the longest after the longest for the second workout.
- * Mirrors WorkoutCredit on the server.
+ * Which session a task is credited from. Mirrors WorkoutCredit on the server.
+ *
+ * The outdoor task takes the first session outside that reaches the target;
+ * the second task takes the longest of what is left. Assigned in that order a
+ * morning walk is workout one and an evening swim the second, rather than the
+ * walk landing under "Second 45-minute workout" because it ran longer.
  */
-function creditedFor(key: string, sessions: WorkoutSession[]): number {
+function creditedFor(key: string, sessions: WorkoutSession[], target: number): number {
   if (sessions.length === 0) return 0
-  if (key === 'workout_outdoor') {
+
+  let outdoorAt = sessions.find((s) => s.outdoor && s.minutes >= target)?.session ?? 0
+  if (!outdoorAt) {
     const outdoors = sessions.filter((s) => s.outdoor)
-    if (outdoors.length === 0) return 0
-    return outdoors.reduce((best, s) => (s.minutes > best.minutes ? s : best)).session
+    outdoorAt = outdoors.length
+      ? outdoors.reduce((best, s) => (s.minutes > best.minutes ? s : best)).session
+      : 0
   }
-  if (sessions.length < 2) return 0
-  const ranked = [...sessions].sort((a, b) => b.minutes - a.minutes)
-  return ranked[1].session
+  if (key === 'workout_outdoor') return outdoorAt
+
+  const rest = sessions.filter((s) => s.session !== outdoorAt)
+  if (rest.length === 0) return 0
+  return rest.reduce((best, s) => (s.minutes > best.minutes ? s : best)).session
 }
 
 function WorkoutTracker({ entry, day, onChanged }: { entry: Entry; day: Day; onChanged: () => void }) {
@@ -233,7 +241,7 @@ function WorkoutTracker({ entry, day, onChanged }: { entry: Entry; day: Day; onC
   // what a task is credited from, so that is what this shows.
   const sessions = groupSessions(day.workouts)
   const credited = entry.value ?? 0
-  const creditedSession = creditedFor(entry.key, sessions)
+  const creditedSession = creditedFor(entry.key, sessions, entry.target_num ?? 45)
 
   const [activity, setActivity] = useState('')
   const [minutes, setMinutes] = useState('')

@@ -88,24 +88,50 @@ func GroupSessions(recs []WorkoutRecord, gap time.Duration) []Session {
 	return sessions
 }
 
-// WorkoutCredit reports the minutes to credit each of the two workout tasks.
+// WorkoutCredit decides which session satisfies each of the two workout tasks,
+// and how many minutes to credit them.
 //
-// outdoor is the longest session that happened outside, and second is the
-// longest session other than the longest — so the pair answers "was one of
-// them outdoors" and "was there a second one at all". Reporting minutes rather
-// than a yes/no keeps the progress bars honest on a part-finished day: a
-// thirty-minute walk shows as thirty of forty-five, not as nothing.
-func WorkoutCredit(sessions []Session) (outdoor, second int) {
-	mins := make([]int, 0, len(sessions))
-	for _, s := range sessions {
-		mins = append(mins, s.Minutes)
-		if s.Outdoor && s.Minutes > outdoor {
-			outdoor = s.Minutes
+// The outdoor task takes the first session outside that reaches the target,
+// because "the outdoor workout" is the one you went out and did, not whichever
+// happened to run longest. The second task takes the longest of what is left.
+// Assigning them in that order is what makes the app's answer match the day as
+// it was lived: a morning walk is workout one, and the evening swim is the
+// second — not the other way round because the swim ran two minutes longer.
+//
+// Until a session reaches the target the longest stands in, so a part-finished
+// day shows thirty of forty-five rather than nothing.
+//
+// The returned indices are into sessions, or -1 when nothing is credited.
+func WorkoutCredit(sessions []Session, target int) (outdoor, second int, outdoorAt, secondAt int) {
+	outdoorAt, secondAt = -1, -1
+
+	for i, s := range sessions {
+		if s.Outdoor && s.Minutes >= target {
+			outdoorAt = i
+			break
 		}
 	}
-	sort.Sort(sort.Reverse(sort.IntSlice(mins)))
-	if len(mins) >= 2 {
-		second = mins[1]
+	if outdoorAt < 0 {
+		for i, s := range sessions {
+			if s.Outdoor && (outdoorAt < 0 || s.Minutes > sessions[outdoorAt].Minutes) {
+				outdoorAt = i
+			}
+		}
 	}
-	return outdoor, second
+	if outdoorAt >= 0 {
+		outdoor = sessions[outdoorAt].Minutes
+	}
+
+	for i, s := range sessions {
+		if i == outdoorAt {
+			continue
+		}
+		if secondAt < 0 || s.Minutes > sessions[secondAt].Minutes {
+			secondAt = i
+		}
+	}
+	if secondAt >= 0 {
+		second = sessions[secondAt].Minutes
+	}
+	return outdoor, second, outdoorAt, secondAt
 }

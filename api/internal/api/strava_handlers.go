@@ -471,7 +471,15 @@ func (s *Server) tickWorkoutTasks(ctx context.Context, r *http.Request, programI
 		s.log.Error("load workout sessions", zap.Error(err))
 		return
 	}
-	outdoorMinutes, secondMinutes := program.WorkoutCredit(sessions)
+	// The target the sessions are measured against: the outdoor task's own,
+	// so an edited program is honoured rather than a constant assumed.
+	target := 45
+	for _, t := range tasks {
+		if strings.Contains(t.key, "outdoor") && t.target != nil && *t.target > 0 {
+			target = int(*t.target)
+		}
+	}
+	outdoorMinutes, secondMinutes, _, _ := program.WorkoutCredit(sessions, target)
 
 	for _, t := range tasks {
 		var total int
