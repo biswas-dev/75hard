@@ -237,7 +237,69 @@ func (s *Server) HandleListPrograms(w http.ResponseWriter, r *http.Request) {
 		}
 		out = append(out, p)
 	}
+	// Done with the cursor before the queries below.
+	rows.Close()
+
+	// The scanned row carries none of the derived fields, so every program in
+	// this list used to report day 0 and no completed days — which is what
+	// settings showed for a run on its third day.
+	loc := s.userLocation(r)
+	today := program.LocalDate(time.Now(), loc)
+
+	complete := s.completedDaysByProgram(r)
+	for i := range out {
+		out[i].Today = today
+		out[i].CurrentDay = currentDayOf(out[i], today)
+		out[i].DaysComplete = complete[out[i].ID]
+	}
+
 	respondJSON(w, http.StatusOK, out)
+}
+
+// currentDayOf is how far through an attempt is, counted to today while it
+// runs and to the day it ended once it has.
+//
+// Counting a finished attempt to today would have a run abandoned on day 3
+// climbing towards 75 for the rest of the year.
+func currentDayOf(p Program, today string) int {
+	on := today
+	if p.Status != program.ProgramActive && p.EndedAt != nil && *p.EndedAt != "" {
+		if len(*p.EndedAt) >= len(program.DateLayout) {
+			on = (*p.EndedAt)[:len(program.DateLayout)]
+		}
+	}
+	day := program.DayNumber(p.StartDate, on)
+	if day > p.LengthDays {
+		return p.LengthDays
+	}
+	if day < 0 {
+		return 0
+	}
+	return day
+}
+
+// completedDaysByProgram counts complete days for every attempt at once,
+// rather than a query per row.
+func (s *Server) completedDaysByProgram(r *http.Request) map[int64]int {
+	out := map[int64]int{}
+	rows, err := s.db.QueryContext(r.Context(), `
+		SELECT d.program_id, COUNT(*)
+		  FROM days d JOIN programs p ON p.id = d.program_id
+		 WHERE p.user_id = ? AND d.status = ?
+		 GROUP BY d.program_id`, UserID(r.Context()), program.StatusComplete)
+	if err != nil {
+		return out
+	}
+	defer rows.Close()
+
+	for rows.Next() {
+		var id int64
+		var n int
+		if err := rows.Scan(&id, &n); err == nil {
+			out[id] = n
+		}
+	}
+	return out
 }
 
 // HandleGetActiveProgram returns the running attempt with its task template,
