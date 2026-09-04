@@ -253,6 +253,48 @@ var outdoorSports = map[string]bool{
 	"Windsurf":       true,
 }
 
+// restIntervalSports are the sports whose rest is part of the workout.
+//
+// Strava's moving time stops whenever you do, which is the right measure for a
+// run or a ride and the wrong one for a session built out of intervals: a
+// forty-five minute swim reports thirty-two, because the seconds spent resting
+// at the wall are not swimming, and the same applies to the rest between sets
+// in a lifting session. For these, the time the session actually took is what
+// a "45-minute workout" means.
+var restIntervalSports = map[string]bool{
+	"Swim":                          true,
+	"WeightTraining":                true,
+	"Crossfit":                      true,
+	"HighIntensityIntervalTraining": true,
+	"RockClimbing":                  true,
+	"Bouldering":                    true,
+	"Workout":                       true,
+	"Yoga":                          true,
+	"Pilates":                       true,
+}
+
+// elapsedSanityFactor bounds how far elapsed time may exceed moving time
+// before it is treated as a watch left running rather than as rest.
+//
+// Three is comfortably above a hard interval session and well below the hour
+// that a forgotten stop adds.
+const elapsedSanityFactor = 3
+
+// SessionMinutes is how long an activity counts for.
+//
+// Moving time for anything that moves, elapsed time for the sports whose rest
+// is part of the work — and moving time again when the elapsed figure is so
+// far past it that the watch was plainly left running.
+func SessionMinutes(sportType, actType string, movingSeconds, elapsedSeconds int) int {
+	seconds := movingSeconds
+	if restIntervalSports[sportType] || restIntervalSports[actType] {
+		if elapsedSeconds > seconds && elapsedSeconds <= seconds*elapsedSanityFactor {
+			seconds = elapsedSeconds
+		}
+	}
+	return seconds / 60
+}
+
 // Classify decides whether an activity counts as the indoor or the outdoor
 // session.
 //

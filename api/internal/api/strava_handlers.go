@@ -386,12 +386,16 @@ func (s *Server) creditStravaActivity(
 		// from one logged twice.
 		startAt sql.NullTime
 	)
+	var movingSeconds, elapsedSeconds int
+	var sportType string
 	if err := s.db.QueryRowContext(ctx, `
-		SELECT id, kind, name, moving_seconds / 60, kcal, workout_id, start_at
+		SELECT id, kind, name, moving_seconds, elapsed_seconds, sport_type, kcal, workout_id, start_at
 		  FROM strava_activities WHERE user_id = ? AND strava_id = ?`,
-		userID, stravaID).Scan(&rowID, &kind, &name, &minutes, &kcal, &workout, &startAt); err != nil {
+		userID, stravaID).Scan(&rowID, &kind, &name, &movingSeconds, &elapsedSeconds,
+		&sportType, &kcal, &workout, &startAt); err != nil {
 		return err
 	}
+	minutes = strava.SessionMinutes(sportType, "", movingSeconds, elapsedSeconds)
 
 	if workout.Valid {
 		// Already credited; keep the workout in step with any edit made on

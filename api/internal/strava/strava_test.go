@@ -170,3 +170,36 @@ func TestNotConfigured(t *testing.T) {
 		t.Error("a client with credentials should be configured")
 	}
 }
+
+func TestSessionMinutesUsesElapsedForSwims(t *testing.T) {
+	// The real activity: forty-five minutes in the pool, of which Strava
+	// counted thirty-two as moving because the rest at the wall is not
+	// swimming. It is still a forty-five minute workout.
+	if got := SessionMinutes("Swim", "Swim", 32*60, 45*60); got != 45 {
+		t.Errorf("swim = %d minutes, want 45", got)
+	}
+}
+
+func TestSessionMinutesKeepsMovingTimeForGPSSports(t *testing.T) {
+	// A walk with a long stop for coffee is not a longer walk.
+	for _, sport := range []string{"Walk", "Run", "Ride", "Hike"} {
+		if got := SessionMinutes(sport, sport, 30*60, 90*60); got != 30 {
+			t.Errorf("%s = %d minutes, want 30", sport, got)
+		}
+	}
+}
+
+func TestSessionMinutesIgnoresAForgottenStop(t *testing.T) {
+	// Six hours elapsed against thirty minutes moving is a watch left
+	// running, not six hours of rest between sets.
+	if got := SessionMinutes("WeightTraining", "", 30*60, 360*60); got != 30 {
+		t.Errorf("got %d minutes, want the moving time of 30", got)
+	}
+}
+
+func TestSessionMinutesNeverShortensASession(t *testing.T) {
+	// Elapsed below moving is nonsense; moving stands.
+	if got := SessionMinutes("Swim", "Swim", 40*60, 10*60); got != 40 {
+		t.Errorf("got %d minutes, want 40", got)
+	}
+}
