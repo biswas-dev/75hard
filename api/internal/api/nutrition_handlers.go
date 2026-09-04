@@ -544,7 +544,8 @@ func (s *Server) mealItems(ctx context.Context, mealID int64) ([]MealItem, error
 
 func (s *Server) workoutByID(ctx context.Context, id int64) (Workout, error) {
 	row := s.db.QueryRowContext(ctx,
-		`SELECT id, day_id, kind, activity, minutes, kcal, notes, created_at FROM workouts WHERE id = ?`, id)
+		`SELECT id, day_id, kind, activity, minutes, kcal, notes, created_at, started_at
+		   FROM workouts WHERE id = ?`, id)
 	return scanWorkout(row)
 }
 
@@ -654,7 +655,7 @@ func derefFloat(f *float64) float64 {
 func (s *Server) dayIsToday(ctx context.Context, dayID int64) bool {
 	var date, tz string
 	if err := s.db.QueryRowContext(ctx, `
-		SELECT d.date, COALESCE(u.timezone, 'UTC')
+		SELECT d.on_date, COALESCE(u.timezone, 'UTC')
 		  FROM days d
 		  JOIN programs p ON p.id = d.program_id
 		  JOIN users u ON u.id = p.user_id

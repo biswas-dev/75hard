@@ -246,11 +246,15 @@ function WorkoutTracker({ entry, day, onChanged }: { entry: Entry; day: Day; onC
   const [activity, setActivity] = useState('')
   const [minutes, setMinutes] = useState('')
   const [busy, setBusy] = useState(false)
+  // A failed save used to leave the button doing visibly nothing: the promise
+  // rejected, the finally cleared the spinner, and nothing was ever shown.
+  const [error, setError] = useState('')
 
   async function add() {
     const mins = Number(minutes)
     if (!Number.isFinite(mins) || mins <= 0) return
     setBusy(true)
+    setError('')
     try {
       await api.createWorkout({
         day_number: day.day_number,
@@ -264,6 +268,8 @@ function WorkoutTracker({ entry, day, onChanged }: { entry: Entry; day: Day; onC
       setActivity('')
       setMinutes('')
       onChanged()
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Could not log that session')
     } finally {
       setBusy(false)
     }
@@ -368,8 +374,9 @@ function WorkoutTracker({ entry, day, onChanged }: { entry: Entry; day: Day; onC
         />
       </div>
       <button className="btn-ghost w-full py-2 text-sm" onClick={add} disabled={busy || !minutes}>
-        + Log session
+        {busy ? 'Saving…' : '+ Log session'}
       </button>
+      {error && <p className="text-center text-sm text-red-400">{error}</p>}
       <p className="text-center text-xs text-ink-600">
         Optional. Ticking the task is enough on its own.
       </p>
