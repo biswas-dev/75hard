@@ -70,6 +70,17 @@ func main() {
 		if err := setAIKey(database, cfg, args[1], slot, args[3], args[4], args[5]); err != nil {
 			fail("%v", err)
 		}
+	case "delete-workout":
+		if len(args) < 2 {
+			fail("usage: admin delete-workout <id> [<id>...]")
+		}
+		if err := deleteWorkouts(database, args[1:]); err != nil {
+			fail("%v", err)
+		}
+	case "list-workouts":
+		if err := listWorkouts(database); err != nil {
+			fail("%v", err)
+		}
 	case "list-ai-keys":
 		if len(args) < 2 {
 			fail("usage: admin list-ai-keys <email>")
@@ -190,6 +201,12 @@ func usage() {
       Stores an AI provider key for one account, encrypted with the server's
       own ENCRYPTION_KEY. Slot 1 is tried first, then 2, then 3.
 
+  admin list-workouts
+      Lists logged workouts with their ids.
+
+  admin delete-workout <id> [<id>...]
+      Removes logged workouts. The day is re-scored on the next sync.
+
   admin list-ai-keys <email>
       Shows which slots are configured. Keys are never decrypted.
 
@@ -284,4 +301,58 @@ func listAIKeys(database *db.DB, email string) error {
 		fmt.Printf("no provider keys stored for %s\n", email)
 	}
 	return rows.Err()
+}
+
+// listWorkouts prints logged sessions with their ids.
+func listWorkouts(database *db.DB) error {
+	rows, err := database.Query(`
+		SELECT w.id, d.day_number, w.kind, w.activity, w.minutes,
+		       COALESCE(w.started_at, ''), w.created_at
+		  FROM workouts w JOIN days d ON d.id = w.day_id
+		 ORDER BY d.day_number, w.id`)
+	if err != nil {
+		return err
+	}
+	defer rows.Close()
+
+	for rows.Next() {
+		var id int64
+		var day, minutes int
+		var kind, activity, started, created string
+		if err := rows.Scan(&id, &day, &kind, &activity, &minutes, &started, &created); err != nil {
+			return err
+		}
+		if started == "" {
+			started = "-"
+		}
+		fmt.Printf("%4d  day %-3d %-8s %-20s %3d min  started %s\n",
+			id, day, kind, activity, minutes, started)
+	}
+	return rows.Err()
+}
+
+// deleteWorkouts removes logged sessions by id.
+//
+// Deliberately narrow: it takes explicit ids and reports what each one was, so
+// an operator can see what is going before it goes.
+func deleteWorkouts(database *db.DB, ids []string) error {
+	for _, raw := range ids {
+		id, err := strconv.ParseInt(strings.TrimSpace(raw), 10, 64)
+		if err != nil {
+			return fmt.Errorf("%q is not a workout id", raw)
+		}
+
+		var activity, kind string
+		var minutes int
+		if err := database.QueryRow(
+			`SELECT activity, kind, minutes FROM workouts WHERE id = ?`, id).
+			Scan(&activity, &kind, &minutes); err != nil {
+			return fmt.Errorf("no workout %d", id)
+		}
+		if _, err := database.Exec(`DELETE FROM workouts WHERE id = ?`, id); err != nil {
+			return fmt.Errorf("could not delete workout %d: %w", id, err)
+		}
+		fmt.Printf("deleted %d: %s %s %d min\n", id, kind, activity, minutes)
+	}
+	return nil
 }

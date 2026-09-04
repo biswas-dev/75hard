@@ -489,7 +489,11 @@ func (s *Server) tickWorkoutTasks(ctx context.Context, r *http.Request, programI
 		default:
 			total = secondMinutes
 		}
-		if total == 0 {
+		// With no workouts logged at all, leave the entry alone: the task may
+		// have been ticked by hand, and a sync that found nothing must not
+		// wipe that. Once there are records, their verdict stands even when it
+		// is zero — otherwise minutes deleted by mistake keep counting.
+		if len(sessions) == 0 {
 			continue
 		}
 

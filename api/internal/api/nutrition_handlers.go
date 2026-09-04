@@ -429,11 +429,35 @@ func (s *Server) HandleDeleteWorkout(w http.ResponseWriter, r *http.Request) {
 		respondError(w, http.StatusBadRequest, "invalid workout id", "invalid_id")
 		return
 	}
-	if _, err := s.db.ExecContext(r.Context(),
-		`DELETE FROM workouts WHERE id = ? AND user_id = ?`, id, UserID(r.Context())); err != nil {
+	ctx := r.Context()
+	userID := UserID(ctx)
+
+	// Find the day before the row goes, so the tasks can be recomputed after.
+	var dayID, programID int64
+	err = s.db.QueryRowContext(ctx, `
+		SELECT w.day_id, d.program_id
+		  FROM workouts w JOIN days d ON d.id = w.day_id
+		 WHERE w.id = ? AND w.user_id = ?`, id, userID).Scan(&dayID, &programID)
+	if err != nil {
+		respondError(w, http.StatusNotFound, "no such workout", "not_found")
+		return
+	}
+
+	if _, err := s.db.ExecContext(ctx,
+		`DELETE FROM workouts WHERE id = ? AND user_id = ?`, id, userID); err != nil {
 		respondError(w, http.StatusInternalServerError, "could not delete workout", "internal")
 		return
 	}
+
+	// Removing a session changes which sessions the day has, so the tasks have
+	// to be re-credited. Without this a workout deleted by mistake left its
+	// minutes standing and the day stayed complete on strength it no longer
+	// had.
+	s.tickWorkoutTasks(ctx, r, programID, dayID)
+	if err := s.refreshDayStatus(r, programID, dayID); err != nil {
+		s.log.Error("refresh day after deleting a workout", zap.Error(err))
+	}
+
 	respondJSON(w, http.StatusOK, map[string]bool{"ok": true})
 }
 
