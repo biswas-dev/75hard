@@ -4,12 +4,13 @@ import { AuthImage } from '../components/AuthImage'
 import { CoachNote } from '../components/CoachNote'
 import { Confetti } from '../components/Confetti'
 import { DailyVitals } from '../components/DailyVitals'
+import { Lightbox } from '../components/Lightbox'
 import { DeletablePhotos, POSE_LABEL } from '../components/PhotoTile'
 import { PhotoUpload } from '../components/PhotoUpload'
 import { SummaryPanel } from '../components/SummaryPanel'
 import { TaskRow } from '../components/TaskRow'
 import { ApiError, api } from '../lib/api'
-import type { Day, Entry, Meal, Program, Summary } from '../lib/types'
+import type { Day, Entry, Meal, Photo, Program, Summary } from '../lib/types'
 import { MealSheet } from './MealSheet'
 
 export function Today() {
@@ -20,6 +21,9 @@ export function Today() {
   const [error, setError] = useState('')
   const [confetti, setConfetti] = useState(false)
   const [mealOpen, setMealOpen] = useState(false)
+  // A progress photo opened full screen. The strip is the list, so a swipe
+  // walks the day's shots.
+  const [viewing, setViewing] = useState<Photo | null>(null)
   // The meal being edited, or null for a new one.
   const [editingMeal, setEditingMeal] = useState<Meal | null>(null)
   const [summary, setSummary] = useState<Summary | null>(null)
@@ -265,6 +269,7 @@ export function Today() {
               className="mb-3 flex gap-2 overflow-x-auto pb-1"
               altFor={() => `Progress photo, day ${day.day_number}`}
               badgeFor={(p) => (p.pose ? POSE_LABEL[p.pose] : '')}
+              onOpen={(p) => setViewing(p)}
               onDeleted={() => load()}
             />
           )}
@@ -370,6 +375,22 @@ export function Today() {
           + Log a meal
         </button>
       </section>
+
+      {viewing && (
+        <Lightbox
+          photos={day.photos.filter((p) => p.kind === 'progress')}
+          index={day.photos
+            .filter((p) => p.kind === 'progress')
+            .findIndex((p) => p.id === viewing.id)}
+          onIndex={(i) => setViewing(day.photos.filter((p) => p.kind === 'progress')[i])}
+          onClose={() => setViewing(null)}
+          caption={(p) =>
+            [p.pose ? POSE_LABEL[p.pose] : '', new Date(p.taken_at).toLocaleString()]
+              .filter(Boolean)
+              .join(' · ')
+          }
+        />
+      )}
 
       {mealOpen && (
         <MealSheet

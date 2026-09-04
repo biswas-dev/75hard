@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { PhotoUpload } from '../components/PhotoUpload'
 import { AuthImage } from '../components/AuthImage'
+import { Lightbox } from '../components/Lightbox'
 import { api } from '../lib/api'
 import type { FoodEstimate, Meal, Photo } from '../lib/types'
 
@@ -82,6 +83,7 @@ export function MealSheet({ dayNumber, onClose, onSaved, onChanged, meal }: Prop
   const [items, setItems] = useState<DraftItem[]>([{ ...emptyItem }])
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
+  const [viewing, setViewing] = useState(false)
   const [aiAvailable, setAiAvailable] = useState(false)
   const [analyzing, setAnalyzing] = useState(false)
   const [aiNote, setAiNote] = useState('')
@@ -259,6 +261,15 @@ export function MealSheet({ dayNumber, onClose, onSaved, onChanged, meal }: Prop
 
   return (
     <div className="fixed inset-0 z-50 flex items-end justify-center">
+      {viewing && photo && (
+        <Lightbox
+          photos={[photo]}
+          index={0}
+          onIndex={() => {}}
+          onClose={() => setViewing(false)}
+          caption={() => name.trim() || slot}
+        />
+      )}
       <button
         className="absolute inset-0 bg-black/70 backdrop-blur-sm"
         onClick={onClose}
@@ -272,11 +283,21 @@ export function MealSheet({ dayNumber, onClose, onSaved, onChanged, meal }: Prop
         <div className="space-y-4">
           {photo ? (
             <div className="relative">
-              <AuthImage
-                src={photo.thumb_url}
-                alt="Meal"
-                className="h-40 w-full rounded-xl object-cover"
-              />
+              {/* Tapping opens it full size: a thumbnail this small is no use
+                  for checking what is actually on the plate before the
+                  estimate is judged. */}
+              <button
+                type="button"
+                className="block w-full"
+                onClick={() => setViewing(true)}
+                title="See this photo full size"
+              >
+                <AuthImage
+                  src={photo.thumb_url}
+                  alt="Meal"
+                  className="h-40 w-full rounded-xl object-cover"
+                />
+              </button>
               <button
                 className="absolute right-2 top-2 rounded-full bg-black/60 px-2.5 py-1 text-sm text-white"
                 onClick={() => setPhoto(null)}

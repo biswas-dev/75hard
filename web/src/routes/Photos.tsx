@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from 'react'
 import { AuthImage } from '../components/AuthImage'
+import { Lightbox } from '../components/Lightbox'
 import { ConfirmDelete, POSE_LABEL, Tile } from '../components/PhotoTile'
 import { ApiError, api } from '../lib/api'
 import type { Photo, Pose, Roll } from '../lib/types'
@@ -24,7 +25,14 @@ export function Photos() {
   const [food, setFood] = useState<Photo[]>([])
   const [pose, setPose] = useState<Pose | 'all'>('all')
   const [loading, setLoading] = useState(true)
-  const [viewing, setViewing] = useState<Photo | null>(null)
+  // The list a photo was opened from, so a swipe walks what is on screen
+  // rather than every photo the account has.
+  const [viewer, setViewer] = useState<{ list: Photo[]; index: number } | null>(null)
+
+  const openPhoto = useCallback((list: Photo[], photo: Photo) => {
+    const index = list.findIndex((p) => p.id === photo.id)
+    setViewer({ list, index: index < 0 ? 0 : index })
+  }, [])
   // The photo a delete has been asked for but not yet confirmed. Deleting a
   // progress shot can un-complete a day, so it is never one tap away.
   const [confirming, setConfirming] = useState<Photo | null>(null)
@@ -54,7 +62,7 @@ export function Photos() {
 
   async function retag(photo: Photo, next: Pose) {
     await api.updatePhoto(photo.id, { pose: next })
-    setViewing(null)
+    setViewer(null)
     load()
   }
 
@@ -63,7 +71,7 @@ export function Photos() {
     setDeleteError('')
     try {
       await api.deletePhoto(photo.id)
-      setViewing(null)
+      setViewer(null)
       setConfirming(null)
       await load()
     } catch (err) {
@@ -91,6 +99,9 @@ export function Photos() {
           .filter((d) => d.photos.length > 0)
 
   const shotCount = days.reduce((n, d) => n + d.photos.length, 0)
+  // The timeline flattened, so a swipe runs through the whole roll rather than
+  // stopping at the end of a day.
+  const rollPhotos = days.flatMap((d) => d.photos)
 
   return (
     <div className="space-y-5 pb-4">
@@ -170,7 +181,7 @@ export function Photos() {
                         ratio="aspect-[3/4]"
                         alt={`Day ${day.day_number} ${POSE_LABEL[p.pose] ?? ''}`}
                         badge={p.pose ? POSE_LABEL[p.pose] : ''}
-                        onOpen={() => setViewing(p)}
+                        onOpen={() => openPhoto(rollPhotos, p)}
                         onAskDelete={() => setConfirming(p)}
                       />
                     ))}
@@ -182,7 +193,9 @@ export function Photos() {
         </>
       )}
 
-      {tab === 'compare' && <Compare roll={roll} pose={pose} onOpen={setViewing} />}
+      {tab === 'compare' && (
+        <Compare roll={roll} pose={pose} onOpen={(p) => openPhoto(rollPhotos, p)} />
+      )}
 
       {tab === 'food' && (
         <>
@@ -197,7 +210,7 @@ export function Photos() {
                   ratio="aspect-square"
                   alt={p.caption || 'Meal'}
                   badge={p.day_number != null ? `Day ${p.day_number}` : ''}
-                  onOpen={() => setViewing(p)}
+                  onOpen={() => openPhoto(food, p)}
                   onAskDelete={() => setConfirming(p)}
                 />
               ))}
@@ -206,8 +219,23 @@ export function Photos() {
         </>
       )}
 
-      {viewing && (
-        <Lightbox photo={viewing} onClose={() => setViewing(null)} onRetag={retag} onDelete={remove} />
+      {viewer && (
+        <Lightbox
+          photos={viewer.list}
+          index={viewer.index}
+          onIndex={(index) => setViewer({ ...viewer, index })}
+          onClose={() => setViewer(null)}
+          caption={(p) =>
+            [
+              p.day_number != null ? `Day ${p.day_number}` : '',
+              p.pose ? POSE_LABEL[p.pose] : '',
+              new Date(p.taken_at).toLocaleDateString(),
+            ]
+              .filter(Boolean)
+              .join(' · ')
+          }
+          footer={(p) => <PhotoActions photo={p} onRetag={retag} onDelete={remove} />}
+        />
       )}
 
       {confirming && (
@@ -296,77 +324,61 @@ function Compare({
   )
 }
 
-function Lightbox({
+/**
+ * What can be done to the photo on screen: retag its angle, or delete it.
+ *
+ * Rendered as the viewer's footer rather than built into it, so the viewer
+ * stays a viewer and knows nothing about poses or deletion.
+ */
+function PhotoActions({
   photo,
-  onClose,
   onRetag,
   onDelete,
 }: {
   photo: Photo
-  onClose: () => void
   onRetag: (p: Photo, pose: Pose) => void
   onDelete: (p: Photo) => void
 }) {
   const [confirming, setConfirming] = useState(false)
 
   return (
-    <div className="fixed inset-0 z-50 flex flex-col bg-black/95">
-      <div className="flex items-center justify-between p-4">
-        <span className="text-sm text-ink-400">
-          {photo.day_number != null ? `Day ${photo.day_number} · ` : ''}
-          {new Date(photo.taken_at).toLocaleDateString()}
-        </span>
-        <button className="p-2 text-2xl leading-none text-ink-300" onClick={onClose} aria-label="Close">
-          ×
-        </button>
-      </div>
-
-      <div className="flex flex-1 items-center justify-center overflow-hidden p-4">
-        <AuthImage
-          src={photo.url}
-          alt={photo.caption || 'Photo'}
-          className="max-h-full max-w-full rounded-xl object-contain"
-        />
-      </div>
-
-      <div className="space-y-3 p-4">
-        {photo.kind === 'progress' && (
-          <div>
-            <p className="mb-2 text-xs uppercase tracking-wide text-ink-500">Angle</p>
-            <div className="grid grid-cols-4 gap-2">
-              {(['front', 'side', 'back', ''] as Pose[]).map((p) => (
-                <button
-                  key={p || 'none'}
-                  onClick={() => onRetag(photo, p)}
-                  className={`rounded-xl border py-2 text-sm transition ${
-                    photo.pose === p
-                      ? 'border-flame-500 bg-flame-500/15 text-flame-400'
-                      : 'border-ink-800 bg-ink-900 text-ink-400'
-                  }`}
-                >
-                  {p ? POSE_LABEL[p] : 'None'}
-                </button>
-              ))}
-            </div>
+    <>
+      {photo.kind === 'progress' && (
+        <div>
+          <p className="mb-2 text-xs uppercase tracking-wide text-ink-500">Angle</p>
+          <div className="grid grid-cols-4 gap-2">
+            {(['front', 'side', 'back', ''] as Pose[]).map((p) => (
+              <button
+                key={p || 'none'}
+                onClick={() => onRetag(photo, p)}
+                className={`rounded-xl border py-2 text-sm transition ${
+                  photo.pose === p
+                    ? 'border-flame-500 bg-flame-500/15 text-flame-400'
+                    : 'border-ink-800 bg-ink-900 text-ink-400'
+                }`}
+              >
+                {p ? POSE_LABEL[p] : 'None'}
+              </button>
+            ))}
           </div>
-        )}
+        </div>
+      )}
 
-        {confirming ? (
-          <div className="flex gap-2">
-            <button className="btn-ghost flex-1" onClick={() => setConfirming(false)}>
-              Keep
-            </button>
-            <button className="btn-danger flex-1" onClick={() => onDelete(photo)}>
-              Delete for good
-            </button>
-          </div>
-        ) : (
-          <button className="btn-danger w-full" onClick={() => setConfirming(true)}>
-            Delete photo
+      {confirming ? (
+        <div className="flex gap-2">
+          <button className="btn-ghost flex-1" onClick={() => setConfirming(false)}>
+            Keep
           </button>
-        )}
-      </div>
-    </div>
+          <button className="btn-danger flex-1" onClick={() => onDelete(photo)}>
+            Delete for good
+          </button>
+        </div>
+      ) : (
+        <button className="btn-danger w-full" onClick={() => setConfirming(true)}>
+          Delete photo
+        </button>
+      )}
+    </>
   )
 }
 

@@ -1,10 +1,11 @@
 import { useCallback, useEffect, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import { AuthImage } from '../components/AuthImage'
+import { Lightbox } from '../components/Lightbox'
 import { PhotoUpload } from '../components/PhotoUpload'
 import { TaskRow } from '../components/TaskRow'
 import { api } from '../lib/api'
-import type { Day, Entry, Program } from '../lib/types'
+import type { Day, Entry, Photo, Program } from '../lib/types'
 
 /** A past (or future) day, reachable from the calendar. */
 export function DayDetail() {
@@ -15,6 +16,7 @@ export function DayDetail() {
   const [program, setProgram] = useState<Program | null>(null)
   const [day, setDay] = useState<Day | null>(null)
   const [note, setNote] = useState('')
+  const [viewing, setViewing] = useState<Photo | null>(null)
   const [weight, setWeight] = useState('')
   const [saved, setSaved] = useState(false)
   const [loading, setLoading] = useState(true)
@@ -99,12 +101,18 @@ export function DayDetail() {
             {day.photos.length > 0 && (
               <div className="mb-3 grid grid-cols-3 gap-2">
                 {day.photos.map((p) => (
-                  <AuthImage
+                  <button
                     key={p.id}
-                    src={p.thumb_url}
-                    alt={`Photo from day ${day.day_number}`}
-                    className="aspect-square w-full rounded-xl object-cover"
-                  />
+                    type="button"
+                    onClick={() => setViewing(p)}
+                    className="aspect-square w-full overflow-hidden rounded-xl transition active:scale-95"
+                  >
+                    <AuthImage
+                      src={p.thumb_url}
+                      alt={`Photo from day ${day.day_number}`}
+                      className="h-full w-full object-cover"
+                    />
+                  </button>
                 ))}
               </div>
             )}
@@ -148,6 +156,18 @@ export function DayDetail() {
             </button>
           </section>
         </>
+      )}
+
+      {viewing && (
+        <Lightbox
+          photos={day.photos}
+          index={day.photos.findIndex((p) => p.id === viewing.id)}
+          onIndex={(i) => setViewing(day.photos[i])}
+          onClose={() => setViewing(null)}
+          caption={(p) =>
+            [`Day ${day.day_number}`, new Date(p.taken_at).toLocaleString()].join(' · ')
+          }
+        />
       )}
     </div>
   )
