@@ -81,6 +81,17 @@ func main() {
 		if err := listWorkouts(database); err != nil {
 			fail("%v", err)
 		}
+	case "clear-ai-cache":
+		if len(args) < 2 {
+			fail("usage: admin clear-ai-cache <email> [feature]")
+		}
+		feature := ""
+		if len(args) >= 3 {
+			feature = args[2]
+		}
+		if err := clearAICache(database, args[1], feature); err != nil {
+			fail("%v", err)
+		}
 	case "list-ai-keys":
 		if len(args) < 2 {
 			fail("usage: admin list-ai-keys <email>")
@@ -206,6 +217,10 @@ func usage() {
 
   admin delete-workout <id> [<id>...]
       Removes logged workouts. The day is re-scored on the next sync.
+
+  admin clear-ai-cache <email> [feature]
+      Forgets cached AI results so the next request asks the model again.
+      Feature is food_photo, coach, plan or recipes; omit it for all.
 
   admin list-ai-keys <email>
       Shows which slots are configured. Keys are never decrypted.
@@ -355,4 +370,47 @@ func deleteWorkouts(database *db.DB, ids []string) error {
 		fmt.Printf("deleted %d: %s %s %d min\n", id, kind, activity, minutes)
 	}
 	return nil
+}
+
+// clearAICache marks stored results as unusable so they stop being served.
+//
+// A successful call is cached by the hash of its input, which is what makes
+// re-running an estimate free. It also means a reply that was accepted but
+// said nothing is returned instantly for ever: the answer never changes,
+// because the model is never asked again. This is the way out of that.
+//
+// The rows are kept and marked rather than deleted — they are the audit trail
+// and the quota count, and a run that happened happened.
+func clearAICache(database *db.DB, email, feature string) error {
+	email = strings.ToLower(strings.TrimSpace(email))
+
+	var id int64
+	if err := database.QueryRow(
+		`SELECT id FROM users WHERE lower(email) = ? AND deleted_at IS NULL`, email).
+		Scan(&id); err != nil {
+		return fmt.Errorf("no active account for %s", email)
+	}
+
+	query := `UPDATE ai_runs SET error = 'cache cleared by an operator'
+	           WHERE user_id = ? AND error = '' AND result_json != ''`
+	args := []any{id}
+	if feature != "" {
+		query += ` AND feature = ?`
+		args = append(args, feature)
+	}
+
+	res, err := database.Exec(query, args...)
+	if err != nil {
+		return fmt.Errorf("could not clear the cache: %w", err)
+	}
+	n, _ := res.RowsAffected()
+	fmt.Printf("cleared %d cached %s result(s) for %s\n", n, featureLabel(feature), email)
+	return nil
+}
+
+func featureLabel(feature string) string {
+	if feature == "" {
+		return "AI"
+	}
+	return feature
 }

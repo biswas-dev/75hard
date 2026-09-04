@@ -12,6 +12,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"strings"
 
@@ -130,6 +131,24 @@ type FoodEstimate struct {
 	FatG     float64 `json:"fat_g"`
 }
 
+// foodRetryNudge is appended on a second attempt.
+//
+// A reasoning model that has just answered with the example needs telling that
+// is what it did; repeating the same prompt tends to produce the same shrug.
+const foodRetryNudge = `
+
+Your previous reply filled in the example rather than the photograph. Look at
+the image and give real components with real calories. Do not use the words
+"short dish name" or "ingredient".`
+
+// foodAttempts is how many times a photo is put to the model.
+//
+// One retry, not more: a second look fixes the case where the thinking ran long
+// and the answer came back empty, and beyond that a photograph the model cannot
+// read is not going to become readable by asking again — it just spends the
+// budget and the person's time.
+const foodAttempts = 2
+
 // EstimateFood identifies a meal from a photo and estimates its nutrition.
 func (s *Service) EstimateFood(ctx context.Context, image []byte, mediaType, hint string) (*FoodEstimate, Meta, error) {
 	if !s.Enabled() {
@@ -141,27 +160,57 @@ func (s *Service) EstimateFood(ctx context.Context, image []byte, mediaType, hin
 		prompt += " The person says it is: " + h
 	}
 
-	resp, err := s.vision().Complete(ctx, ai.Request{
-		System:   foodSystemPrompt,
-		Messages: []ai.Message{ai.UserImage(prompt, mediaType, image)},
-		// Generous on purpose, and sized from a measurement rather than a
-		// guess. Several vision models are reasoning models: they spend tokens
-		// thinking before they answer, out of this same budget. A real
-		// photograph of a breakfast used 3,387 completion tokens, of which
-		// 3,055 were reasoning — so 1,600 exhausted the allowance mid-thought
-		// and returned an empty completion with finish_reason "length", which
-		// reads as total failure rather than as a budget problem. Even 4,000
-		// left little headroom for a busier plate.
-		MaxTokens: 6000,
-		JSON:      true,
-	})
-	if err != nil {
-		return nil, Meta{}, err
+	var lastMeta Meta
+	var lastErr error
+
+	for attempt := 0; attempt < foodAttempts; attempt++ {
+		system := foodSystemPrompt
+		if attempt > 0 {
+			system += foodRetryNudge
+		}
+
+		resp, err := s.vision().Complete(ctx, ai.Request{
+			System:   system,
+			Messages: []ai.Message{ai.UserImage(prompt, mediaType, image)},
+			// Generous on purpose, and sized from a measurement rather than a
+			// guess. Several vision models are reasoning models: they spend
+			// tokens thinking before they answer, out of this same budget. A
+			// real photograph of a breakfast used 3,387 completion tokens, of
+			// which 3,055 were reasoning — so 1,600 exhausted the allowance
+			// mid-thought and returned an empty completion with finish_reason
+			// "length", which reads as total failure rather than as a budget
+			// problem. Even 4,000 left little headroom for a busier plate.
+			//
+			// Raised again after a lunch came back having spent all 6,000 and
+			// answered with the example: a long description and a crowded
+			// plate is when the thinking runs longest, and when the answer
+			// matters most.
+			MaxTokens: 9000,
+			JSON:      true,
+		})
+		if err != nil {
+			// A transport or provider failure; go-ai has already retried and
+			// fallen through what it could.
+			return nil, Meta{}, err
+		}
+
+		est, err := readEstimate(resp.Text)
+		lastMeta = meta(resp, hashBytes(image, hint), jsonString(est))
+		if err == nil {
+			return &est, lastMeta, nil
+		}
+		lastErr = err
 	}
 
+	return nil, lastMeta, lastErr
+}
+
+// readEstimate parses one reply, drops what cannot be used, and reports
+// whether what survives is actually an estimate.
+func readEstimate(text string) (FoodEstimate, error) {
 	var est FoodEstimate
-	if err := ai.ExtractJSON(resp.Text, &est); err != nil {
-		return nil, meta(resp, hashBytes(image, hint), ""), fmt.Errorf("aifeatures: could not read the estimate: %w", err)
+	if err := ai.ExtractJSON(text, &est); err != nil {
+		return est, fmt.Errorf("aifeatures: could not read the estimate: %w", err)
 	}
 
 	// Drop anything unusable and recompute the totals from what survives.
@@ -196,7 +245,55 @@ func (s *Service) EstimateFood(ctx context.Context, image []byte, mediaType, hin
 	}
 	est.Name = strings.TrimSpace(est.Name)
 
-	return &est, meta(resp, hashBytes(image, hint), jsonString(est)), nil
+	return est, usableEstimate(est)
+}
+
+// ErrNoEstimate means the model answered without actually estimating anything.
+var ErrNoEstimate = errors.New("aifeatures: the model did not return an estimate")
+
+// schemaEchoes are the placeholder strings from the prompt's own example.
+//
+// A reasoning model that spends its budget thinking sometimes answers by
+// filling in the shape it was given rather than the photograph it was shown,
+// and the result parses perfectly: a meal called "short dish name" holding one
+// "ingredient" of zero calories.
+var schemaEchoes = map[string]bool{
+	"short dish name": true,
+	"ingredient":      true,
+}
+
+// usableEstimate rejects an answer that parsed but says nothing.
+//
+// This matters more than it looks: an estimate is written to the meal as soon
+// as it arrives, so anything accepted here lands in the log as fact. Zero
+// calories is not a measurement — it is the absence of one — and saving it
+// silently is worse than failing loudly, because the meal then reads as
+// counted when it was not.
+func usableEstimate(est FoodEstimate) error {
+	if len(est.Items) == 0 {
+		if note := strings.TrimSpace(est.Notes); note != "" {
+			return fmt.Errorf("%w: %s", ErrNoEstimate, note)
+		}
+		return fmt.Errorf("%w: nothing recognisable in the photo", ErrNoEstimate)
+	}
+
+	if schemaEchoes[strings.ToLower(est.Name)] {
+		return fmt.Errorf("%w: it returned the example instead of an estimate", ErrNoEstimate)
+	}
+	echoed := 0
+	for _, item := range est.Items {
+		if schemaEchoes[strings.ToLower(item.Name)] {
+			echoed++
+		}
+	}
+	if echoed == len(est.Items) {
+		return fmt.Errorf("%w: it returned the example instead of an estimate", ErrNoEstimate)
+	}
+
+	if est.Kcal <= 0 {
+		return fmt.Errorf("%w: every item came back at zero calories", ErrNoEstimate)
+	}
+	return nil
 }
 
 // ---- recipes ----
