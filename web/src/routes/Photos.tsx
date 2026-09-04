@@ -1,16 +1,12 @@
 import { useCallback, useEffect, useState } from 'react'
 import { AuthImage } from '../components/AuthImage'
+import { ConfirmDelete, POSE_LABEL, Tile } from '../components/PhotoTile'
 import { ApiError, api } from '../lib/api'
 import type { Photo, Pose, Roll } from '../lib/types'
 
 type Tab = 'roll' | 'compare' | 'food'
 
-const POSE_LABEL: Record<string, string> = {
-  '': 'Untagged',
-  front: 'Front',
-  side: 'Side',
-  back: 'Back',
-}
+
 
 const POSE_ORDER: Pose[] = ['front', 'side', 'back', '']
 
@@ -29,6 +25,11 @@ export function Photos() {
   const [pose, setPose] = useState<Pose | 'all'>('all')
   const [loading, setLoading] = useState(true)
   const [viewing, setViewing] = useState<Photo | null>(null)
+  // The photo a delete has been asked for but not yet confirmed. Deleting a
+  // progress shot can un-complete a day, so it is never one tap away.
+  const [confirming, setConfirming] = useState<Photo | null>(null)
+  const [deleting, setDeleting] = useState(false)
+  const [deleteError, setDeleteError] = useState('')
   const [error, setError] = useState('')
 
   const load = useCallback(async () => {
@@ -58,9 +59,18 @@ export function Photos() {
   }
 
   async function remove(photo: Photo) {
-    await api.deletePhoto(photo.id)
-    setViewing(null)
-    load()
+    setDeleting(true)
+    setDeleteError('')
+    try {
+      await api.deletePhoto(photo.id)
+      setViewing(null)
+      setConfirming(null)
+      await load()
+    } catch (err) {
+      setDeleteError(err instanceof Error ? err.message : 'Could not delete that photo')
+    } finally {
+      setDeleting(false)
+    }
   }
 
   if (loading) {
@@ -154,22 +164,15 @@ export function Photos() {
                   </div>
                   <div className="grid grid-cols-3 gap-2">
                     {day.photos.map((p) => (
-                      <button
+                      <Tile
                         key={p.id}
-                        onClick={() => setViewing(p)}
-                        className="relative aspect-[3/4] overflow-hidden rounded-xl transition active:scale-95"
-                      >
-                        <AuthImage
-                          src={p.thumb_url}
-                          alt={`Day ${day.day_number} ${POSE_LABEL[p.pose] ?? ''}`}
-                          className="h-full w-full object-cover"
-                        />
-                        {p.pose && (
-                          <span className="absolute bottom-1 left-1 rounded bg-black/70 px-1.5 py-0.5 text-[10px] text-white">
-                            {POSE_LABEL[p.pose]}
-                          </span>
-                        )}
-                      </button>
+                        photo={p}
+                        ratio="aspect-[3/4]"
+                        alt={`Day ${day.day_number} ${POSE_LABEL[p.pose] ?? ''}`}
+                        badge={p.pose ? POSE_LABEL[p.pose] : ''}
+                        onOpen={() => setViewing(p)}
+                        onAskDelete={() => setConfirming(p)}
+                      />
                     ))}
                   </div>
                 </section>
@@ -188,18 +191,15 @@ export function Photos() {
           ) : (
             <div className="grid grid-cols-3 gap-2">
               {food.map((p) => (
-                <button
+                <Tile
                   key={p.id}
-                  onClick={() => setViewing(p)}
-                  className="relative aspect-square overflow-hidden rounded-xl transition active:scale-95"
-                >
-                  <AuthImage src={p.thumb_url} alt={p.caption || 'Meal'} className="h-full w-full object-cover" />
-                  {p.day_number != null && (
-                    <span className="absolute bottom-1 left-1 rounded bg-black/65 px-1.5 py-0.5 text-[10px] text-white">
-                      Day {p.day_number}
-                    </span>
-                  )}
-                </button>
+                  photo={p}
+                  ratio="aspect-square"
+                  alt={p.caption || 'Meal'}
+                  badge={p.day_number != null ? `Day ${p.day_number}` : ''}
+                  onOpen={() => setViewing(p)}
+                  onAskDelete={() => setConfirming(p)}
+                />
               ))}
             </div>
           )}
@@ -208,6 +208,19 @@ export function Photos() {
 
       {viewing && (
         <Lightbox photo={viewing} onClose={() => setViewing(null)} onRetag={retag} onDelete={remove} />
+      )}
+
+      {confirming && (
+        <ConfirmDelete
+          photo={confirming}
+          busy={deleting}
+          error={deleteError}
+          onCancel={() => {
+            setConfirming(null)
+            setDeleteError('')
+          }}
+          onConfirm={() => remove(confirming)}
+        />
       )}
     </div>
   )

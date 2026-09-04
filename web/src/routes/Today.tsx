@@ -4,6 +4,7 @@ import { AuthImage } from '../components/AuthImage'
 import { CoachNote } from '../components/CoachNote'
 import { Confetti } from '../components/Confetti'
 import { DailyVitals } from '../components/DailyVitals'
+import { DeletablePhotos, POSE_LABEL } from '../components/PhotoTile'
 import { PhotoUpload } from '../components/PhotoUpload'
 import { SummaryPanel } from '../components/SummaryPanel'
 import { TaskRow } from '../components/TaskRow'
@@ -258,18 +259,14 @@ export function Today() {
             Progress photo
           </h2>
           {day.photos.filter((p) => p.kind === 'progress').length > 0 && (
-            <div className="mb-3 flex gap-2 overflow-x-auto pb-1">
-              {day.photos
-                .filter((p) => p.kind === 'progress')
-                .map((p) => (
-                  <AuthImage
-                    key={p.id}
-                    src={p.thumb_url}
-                    alt={`Progress photo, day ${day.day_number}`}
-                    className="h-24 w-24 shrink-0 rounded-xl object-cover"
-                  />
-                ))}
-            </div>
+            <DeletablePhotos
+              photos={day.photos.filter((p) => p.kind === 'progress')}
+              ratio="h-24 w-24 shrink-0"
+              className="mb-3 flex gap-2 overflow-x-auto pb-1"
+              altFor={() => `Progress photo, day ${day.day_number}`}
+              badgeFor={(p) => (p.pose ? POSE_LABEL[p.pose] : '')}
+              onDeleted={() => load()}
+            />
           )}
           <PhotoUpload
             kind="progress"

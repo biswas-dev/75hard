@@ -279,8 +279,13 @@ func (s *Server) HandleDeletePhoto(w http.ResponseWriter, r *http.Request) {
 	s.photos.Remove(relPath, thumbPath)
 
 	// Removing the day's only progress photo can un-complete the day.
+	//
+	// Deliberately without consequence: tidying up a duplicate shot from last
+	// week must not re-judge that day and end the attempt under a strict
+	// restart. The day's standing is corrected; the run is not punished for
+	// housekeeping.
 	if programID != nil && dayID != nil {
-		if err := s.refreshDayStatus(r, *programID, *dayID); err != nil {
+		if err := s.refreshDayStatusNoConsequence(r, *programID, *dayID); err != nil {
 			s.log.Error("refresh day after photo delete", zap.Error(err))
 		}
 	}

@@ -8,6 +8,8 @@ interface Props {
   onClose: () => void
   /** Which camera to open with. Rear for a back shot, front for a selfie. */
   initialFacing?: Facing
+  /** Seconds the self-timer starts on. Zero shoots immediately. */
+  initialTimer?: number
   label?: string
 }
 
@@ -22,7 +24,13 @@ const TIMERS = [0, 3, 10] as const
  * while standing in position. A live preview we control is the only way to
  * offer a countdown on *either* camera.
  */
-export function CameraCapture({ onCapture, onClose, initialFacing = 'user', label }: Props) {
+export function CameraCapture({
+  onCapture,
+  onClose,
+  initialFacing = 'user',
+  initialTimer = 0,
+  label,
+}: Props) {
   const videoRef = useRef<HTMLVideoElement>(null)
   const streamRef = useRef<MediaStream | null>(null)
   // Held in a ref as well as state so the countdown's timeouts can be cleared
@@ -30,7 +38,7 @@ export function CameraCapture({ onCapture, onClose, initialFacing = 'user', labe
   const countdownRef = useRef<number | null>(null)
 
   const [facing, setFacing] = useState<Facing>(initialFacing)
-  const [timer, setTimer] = useState<number>(0)
+  const [timer, setTimer] = useState<number>(initialTimer)
   const [counting, setCounting] = useState<number | null>(null)
   const [error, setError] = useState('')
   const [ready, setReady] = useState(false)

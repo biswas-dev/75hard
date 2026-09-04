@@ -25,17 +25,30 @@ const SLOTS = ['breakfast', 'lunch', 'dinner', 'snack'] as const
 /**
  * Which lens to open with, by what is being photographed.
  *
- * A progress shot is of yourself, so the front camera is the one you can
- * frame — except a back or side shot, which you cannot see to take and which
- * needs the rear lens and the timer. Food is in front of you and never in the
- * selfie camera.
+ * Every progress shot uses the front camera, side and back included. The rear
+ * lens takes the better picture, but you cannot see what it is pointing at, so
+ * framing a back shot alone means guessing and re-taking. On the front camera
+ * the preview does that job before the timer runs out.
+ *
+ * Food is on the table and never in the selfie camera.
  */
-export function lensFor(kind: Props['kind'], pose: Pose): 'user' | 'environment' {
+export function lensFor(kind: Props['kind'], _pose?: Pose): 'user' | 'environment' {
   if (kind === 'progress') {
-    return pose === 'back' || pose === 'side' ? 'environment' : 'user'
+    return 'user'
   }
-  // Food and ingredients are on the table, not in a mirror.
   return 'environment'
+}
+
+/**
+ * How long the timer should start on.
+ *
+ * A progress shot is taken of yourself from across the room, so three seconds
+ * to put the phone down and turn round is the common case rather than the
+ * exception. A meal is photographed with the phone in your hand and wants no
+ * delay at all.
+ */
+export function timerFor(kind: Props['kind']): number {
+  return kind === 'progress' ? 3 : 0
 }
 
 /**
@@ -125,6 +138,7 @@ export function PhotoUpload({
           // A back or side shot needs the rear camera and a timer; opening on
           // the right one saves a tap at exactly the moment it is awkward.
           initialFacing={lensFor(kind, pose)}
+          initialTimer={timerFor(kind)}
           onClose={() => setCameraOpen(false)}
           onCapture={(blob) => {
             setCameraOpen(false)
