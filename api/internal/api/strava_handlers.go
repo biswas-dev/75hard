@@ -406,7 +406,7 @@ func (s *Server) creditStravaActivity(
 			 WHERE id = ? AND user_id = ?`,
 			kind, name, minutes, kcal, startAt, workout.Int64, userID)
 		if err == nil {
-			s.tickWorkoutTasks(ctx, r, programID, dayID)
+			s.creditedDay(ctx, r, programID, dayID)
 		}
 		return err
 	}
@@ -424,8 +424,25 @@ func (s *Server) creditStravaActivity(
 		return err
 	}
 
-	s.tickWorkoutTasks(ctx, r, programID, dayID)
+	s.creditedDay(ctx, r, programID, dayID)
 	return nil
+}
+
+// creditedDay re-scores a day after an import changed its workouts.
+//
+// Ticking the tasks was not enough on its own: the day's own standing is
+// computed separately, so a day finished by an imported activity stayed
+// pending until something else happened to touch it — which is why an evening
+// with the training plainly done still read as unfinished.
+//
+// Deliberately without consequence. An import must never be the thing that
+// ends a run: syncing yesterday's walk once re-judged a past day under a
+// strict restart and failed the attempt outright.
+func (s *Server) creditedDay(ctx context.Context, r *http.Request, programID, dayID int64) {
+	s.tickWorkoutTasks(ctx, r, programID, dayID)
+	if err := s.refreshDayStatusNoConsequence(r, programID, dayID); err != nil {
+		s.log.Error("refresh day after import", zap.Error(err))
+	}
 }
 
 // tickWorkoutTasks re-evaluates the day's workout tasks from its sessions.
