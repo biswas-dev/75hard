@@ -511,9 +511,17 @@ func (s *Service) DailyNote(ctx context.Context, h History) (*CoachNote, Meta, e
 
 	brief := renderHistory(h)
 	resp, err := s.chain.Complete(ctx, ai.Request{
-		System:    coachSystemPrompt,
-		Messages:  []ai.Message{ai.UserText(brief)},
-		MaxTokens: 500,
+		System:   coachSystemPrompt,
+		Messages: []ai.Message{ai.UserText(brief)},
+		// The note itself is two or three sentences, so nearly all of this is
+		// headroom for thinking rather than for the answer.
+		//
+		// It was 500, sized for the note. On a reasoning model that is spent
+		// before the answer begins: the same mistake, made three times now,
+		// that had food estimates failing at 1,600. It failed every time the
+		// day had enough history to think about, which is exactly when the
+		// note is worth reading.
+		MaxTokens: 3000,
 		JSON:      true,
 	})
 	if err != nil {
