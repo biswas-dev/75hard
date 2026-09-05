@@ -164,6 +164,8 @@ interface WorkoutSession {
   minutes: number
   outdoor: boolean
   startedAt: string
+  /** The session's own start, as the server stored it, for joining it. */
+  startRaw: string
   parts: Workout[]
 }
 
@@ -182,6 +184,7 @@ function groupSessions(workouts: Workout[]): WorkoutSession[] {
       found.minutes += w.minutes
       found.outdoor = found.outdoor || w.kind === 'outdoor'
       found.startedAt = found.startedAt || formatStart(w.started_at)
+      found.startRaw = found.startRaw || w.started_at || ''
       found.parts.push(w)
       continue
     }
@@ -190,10 +193,17 @@ function groupSessions(workouts: Workout[]): WorkoutSession[] {
       minutes: w.minutes,
       outdoor: w.kind === 'outdoor',
       startedAt: formatStart(w.started_at),
+      startRaw: w.started_at || '',
       parts: [w],
     })
   }
   return [...by.values()].sort((a, b) => a.session - b.session)
+}
+
+/** The server's stored form to something Go will parse back. */
+function toISO(v: string): string | undefined {
+  const t = new Date(v.replace(' +0000 UTC', 'Z').replace(' ', 'T'))
+  return Number.isNaN(t.getTime()) ? undefined : t.toISOString()
 }
 
 function formatStart(v?: string): string {
@@ -245,6 +255,13 @@ function WorkoutTracker({ entry, day, onChanged }: { entry: Entry; day: Day; onC
 
   const [activity, setActivity] = useState('')
   const [minutes, setMinutes] = useState('')
+  // Which session the entry belongs to: a new one, or minutes added to one
+  // already logged. Zero means new.
+  //
+  // Without this, minutes typed in to top up an earlier session were stamped
+  // with the current time, landed hours away from it, and became a session of
+  // their own — so a 44-minute walk stayed 44 however much was added.
+  const [joinSession, setJoinSession] = useState(0)
   const [busy, setBusy] = useState(false)
   // A failed save used to leave the button doing visibly nothing: the promise
   // rejected, the finally cleared the spinner, and nothing was ever shown.
@@ -256,17 +273,22 @@ function WorkoutTracker({ entry, day, onChanged }: { entry: Entry; day: Day; onC
     setBusy(true)
     setError('')
     try {
+      const target = sessions.find((s) => s.session === joinSession)
       await api.createWorkout({
         day_number: day.day_number,
         kind,
         activity: activity.trim(),
         minutes: mins,
+        // Joining a session means starting when it started; the grouping then
+        // puts this with it and keeps it there.
+        started_at: target?.startRaw ? toISO(target.startRaw) : undefined,
         // The server credits both workout tasks from the day's sessions; the
         // task id only says which one the entry was made from.
         task_id: entry.task_id,
       })
       setActivity('')
       setMinutes('')
+      setJoinSession(0)
       onChanged()
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Could not log that session')
@@ -339,6 +361,43 @@ function WorkoutTracker({ entry, day, onChanged }: { entry: Entry; day: Day; onC
           </div>
         )
       })}
+
+      {sessions.length > 0 && (
+        <div>
+          <span className="label">Add to</span>
+          <div className="flex flex-wrap gap-2">
+            <button
+              type="button"
+              onClick={() => setJoinSession(0)}
+              className={`rounded-xl border px-3 py-2 text-sm transition ${
+                joinSession === 0
+                  ? 'border-flame-500 bg-flame-500/15 text-flame-400'
+                  : 'border-ink-800 bg-ink-850 text-ink-400'
+              }`}
+            >
+              New workout
+            </button>
+            {sessions.map((s) => (
+              <button
+                key={s.session}
+                type="button"
+                onClick={() => setJoinSession(s.session)}
+                className={`rounded-xl border px-3 py-2 text-sm transition ${
+                  joinSession === s.session
+                    ? 'border-flame-500 bg-flame-500/15 text-flame-400'
+                    : 'border-ink-800 bg-ink-850 text-ink-400'
+                }`}
+              >
+                Workout {s.session}
+                <span className="ml-1 text-xs text-ink-600">{s.minutes}m</span>
+              </button>
+            ))}
+          </div>
+          <p className="mt-1.5 text-xs text-ink-600">
+            Adding to a workout tops up its minutes. A new one only counts on its own.
+          </p>
+        </div>
+      )}
 
       <div className="grid grid-cols-2 gap-2">
         {(['outdoor', 'indoor'] as const).map((k) => (
