@@ -93,7 +93,12 @@ export function StartProgram() {
   return (
     <div className="mx-auto w-full max-w-lg px-4 py-8 pb-32">
       <header className="mb-8 animate-slide-up">
-        <h1 className="text-3xl font-semibold text-ink-100">Set up your challenge</h1>
+        <div className="flex items-start justify-between gap-4">
+          <h1 className="text-3xl font-semibold text-ink-100">Set up your challenge</h1>
+          <button type="button" className="btn-ghost shrink-0 px-3 py-2 text-sm" onClick={() => navigate('/history')}>
+            Past challenges
+          </button>
+        </div>
         <p className="mt-2 text-ink-500">
           These are the six classic rules. Change anything you like — the program is yours.
         </p>

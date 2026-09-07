@@ -25,7 +25,7 @@ export function Settings() {
   const [newPassword, setNewPassword] = useState('')
   const [passwordMsg, setPasswordMsg] = useState('')
   const [programs, setPrograms] = useState<Program[]>([])
-  const [confirmRestart, setConfirmRestart] = useState(false)
+  const [confirmEnd, setConfirmEnd] = useState(false)
   const [error, setError] = useState('')
 
   useEffect(() => {
@@ -180,29 +180,36 @@ export function Settings() {
               : 'Lenient: missed days are recorded but the attempt continues.'}
           </p>
 
-          {confirmRestart ? (
+          {confirmEnd ? (
             <div className="rounded-xl border border-red-500/25 bg-red-500/10 p-3">
               <p className="text-sm text-red-300">
-                This ends the current attempt and starts again at day 1. Your history is kept.
+                This marks the current attempt as failed. Its progress stays in your history, and
+                you can choose when to start another challenge.
               </p>
               <div className="mt-3 flex gap-2">
-                <button className="btn-ghost flex-1 py-2 text-sm" onClick={() => setConfirmRestart(false)}>
-                  Cancel
+                <button className="btn-ghost flex-1 py-2 text-sm" onClick={() => setConfirmEnd(false)}>
+                  Keep going
                 </button>
                 <button
                   className="btn-danger flex-1 py-2 text-sm"
                   onClick={async () => {
-                    await api.restartProgram(active.id)
-                    navigate('/app')
+                    setError('')
+                    try {
+                      await api.updateProgram(active.id, { status: 'failed' })
+                      navigate('/start', { replace: true })
+                    } catch (err) {
+                      setError(err instanceof Error ? err.message : 'Could not end the challenge')
+                      setConfirmEnd(false)
+                    }
                   }}
                 >
-                  Restart at day 1
+                  Mark as failed
                 </button>
               </div>
             </div>
           ) : (
-            <button className="btn-ghost w-full" onClick={() => setConfirmRestart(true)}>
-              Restart the challenge
+            <button className="btn-ghost w-full" onClick={() => setConfirmEnd(true)}>
+              End this challenge
             </button>
           )}
         </section>
@@ -222,27 +229,13 @@ export function Settings() {
 
       <ApiTokensCard />
 
-      {programs.length > 1 && (
+      {programs.some((p) => p.status !== 'active') && (
         <section className="card p-4">
-          <h2 className="mb-3 text-sm font-medium uppercase tracking-wide text-ink-500">Past attempts</h2>
-          <ul className="divide-y divide-ink-800">
-            {programs
-              .filter((p) => p.status !== 'active')
-              .map((p) => (
-                <li key={p.id} className="flex items-center justify-between py-2.5 text-sm">
-                  <span className="text-ink-300">
-                    Attempt {p.attempt_number} · {p.start_date}
-                  </span>
-                  <span
-                    className={`capitalize ${
-                      p.status === 'completed' ? 'text-moss-400' : 'text-ink-500'
-                    }`}
-                  >
-                    {p.status}
-                  </span>
-                </li>
-              ))}
-          </ul>
+          <h2 className="text-sm font-medium uppercase tracking-wide text-ink-500">Past challenges</h2>
+          <p className="mt-2 text-sm text-ink-500">Review failed and completed attempts, including their dates and progress.</p>
+          <button className="btn-ghost mt-4 w-full" onClick={() => navigate('/history')}>
+            View challenge history
+          </button>
         </section>
       )}
 

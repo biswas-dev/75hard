@@ -368,7 +368,7 @@ func (s *Server) HandleUpdateProgram(w http.ResponseWriter, r *http.Request) {
 	}
 	if req.Status != nil {
 		st := *req.Status
-		if st != program.ProgramActive && st != program.ProgramAbandoned && st != program.ProgramCompleted {
+		if st != program.ProgramActive && st != program.ProgramFailed && st != program.ProgramAbandoned && st != program.ProgramCompleted {
 			respondError(w, http.StatusBadRequest, "invalid status", "invalid_status")
 			return
 		}

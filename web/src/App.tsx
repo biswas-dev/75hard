@@ -19,6 +19,7 @@ const StatsPage = lazy(() => import('./routes/Stats').then((m) => ({ default: m.
 const Settings = lazy(() => import('./routes/Settings').then((m) => ({ default: m.Settings })))
 const Coach = lazy(() => import('./routes/Coach').then((m) => ({ default: m.Coach })))
 const StartProgram = lazy(() => import('./routes/StartProgram').then((m) => ({ default: m.StartProgram })))
+const ChallengeHistory = lazy(() => import('./routes/ChallengeHistory').then((m) => ({ default: m.ChallengeHistory })))
 
 function ProtectedRoute({ children }: { children: JSX.Element }) {
   const { user, loading } = useAuth()
@@ -72,6 +73,7 @@ export default function App() {
             <Route path="/oauth/callback" element={<OAuthCallback />} />
 
             <Route path="/start" element={<ProtectedRoute><StartProgram /></ProtectedRoute>} />
+            <Route path="/history" element={<ProtectedRoute><ChallengeHistory /></ProtectedRoute>} />
 
             <Route path="/app" element={<ProtectedRoute><Layout /></ProtectedRoute>}>
               <Route index element={<Today />} />
