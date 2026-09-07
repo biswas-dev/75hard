@@ -18,10 +18,17 @@ export function ChallengeHistory() {
   const [programs, setPrograms] = useState<Program[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
+  const [notes, setNotes] = useState<Record<number, string>>({})
+  const [saving, setSaving] = useState<number | null>(null)
+  const [saved, setSaved] = useState<number | null>(null)
 
   useEffect(() => {
     api.listPrograms()
-      .then((items) => setPrograms(items.filter((item) => item.status !== 'active')))
+      .then((items) => {
+        const past = items.filter((item) => item.status !== 'active')
+        setPrograms(past)
+        setNotes(Object.fromEntries(past.map((item) => [item.id, item.notes || ''])))
+      })
       .catch((err) => setError(err instanceof Error ? err.message : 'Could not load challenge history'))
       .finally(() => setLoading(false))
   }, [])
@@ -72,6 +79,37 @@ export function ChallengeHistory() {
                 <dd className="mt-1 text-ink-300">{program.days_complete} {program.days_complete === 1 ? 'day' : 'days'}</dd>
               </div>
             </dl>
+            <form
+              className="mt-4 border-t border-ink-800 pt-4"
+              onSubmit={async (event) => {
+                event.preventDefault()
+                setSaving(program.id)
+                setSaved(null)
+                setError('')
+                try {
+                  await api.updateProgram(program.id, { notes: notes[program.id] || '' })
+                  setSaved(program.id)
+                } catch (err) {
+                  setError(err instanceof Error ? err.message : 'Could not save the comment')
+                } finally {
+                  setSaving(null)
+                }
+              }}
+            >
+              <label className="label" htmlFor={`notes-${program.id}`}>Comment</label>
+              <textarea
+                id={`notes-${program.id}`}
+                className="field"
+                rows={3}
+                maxLength={2000}
+                placeholder="What happened? What would you change next time?"
+                value={notes[program.id] || ''}
+                onChange={(event) => setNotes((current) => ({ ...current, [program.id]: event.target.value }))}
+              />
+              <button className="btn-ghost mt-2 w-full" disabled={saving === program.id}>
+                {saving === program.id ? 'Saving…' : saved === program.id ? 'Comment saved' : 'Save comment'}
+              </button>
+            </form>
           </article>
         ))}
       </div>
