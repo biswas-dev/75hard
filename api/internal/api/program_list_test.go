@@ -45,3 +45,19 @@ func TestCurrentDayOfIsZeroBeforeTheStart(t *testing.T) {
 		t.Errorf("day %d, want 0", got)
 	}
 }
+
+func TestCanonicalTasksRecoverTrackersOmittedByOlderClients(t *testing.T) {
+	for key, want := range map[string]string{
+		"workout_outdoor": program.TrackerWorkout,
+		"workout_second":  program.TrackerWorkout,
+		"diet":            program.TrackerNutrition,
+		"reading":         "",
+	} {
+		if got := trackerForTask(key, ""); got != want {
+			t.Errorf("trackerForTask(%q) = %q, want %q", key, got, want)
+		}
+	}
+	if got := trackerForTask("custom", program.TrackerMeditation); got != program.TrackerMeditation {
+		t.Errorf("an explicit valid tracker was replaced: %q", got)
+	}
+}

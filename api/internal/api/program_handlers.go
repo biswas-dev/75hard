@@ -190,13 +190,15 @@ func (s *Server) HandleCreateProgram(w http.ResponseWriter, r *http.Request) {
 			required = *t.Required
 		}
 
+		tracker := trackerForTask(key, t.Tracker)
+
 		if _, err := tx.ExecContext(ctx, `
 			INSERT INTO program_tasks (program_id, task_key, title, detail, icon, kind,
 			                           target_num, unit, sort_order, required, color, tracker)
 			VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 			programID, key, title, strings.TrimSpace(t.Detail), defaultString(t.Icon, "check"),
 			kind, t.TargetNum, strings.TrimSpace(t.Unit), i, boolToInt(required),
-			defaultString(t.Color, paletteColor(i)), trackerOrNone(t.Tracker)); err != nil {
+			defaultString(t.Color, paletteColor(i)), tracker); err != nil {
 			s.log.Error("insert program task", zap.Error(err))
 			respondError(w, http.StatusInternalServerError, "could not create tasks", "internal")
 			return
@@ -852,4 +854,23 @@ func trackerOrNone(t string) string {
 		return t
 	}
 	return program.TrackerNone
+}
+
+// trackerForTask keeps canonical task keys wired to their richer trackers
+// even when a cached or older setup client omits the tracker field. Without
+// this fallback Strava imports exist on the day but cannot credit either
+// workout requirement.
+func trackerForTask(key, requested string) string {
+	tracker := trackerOrNone(requested)
+	if tracker != "" {
+		return tracker
+	}
+	switch key {
+	case "workout_outdoor", "workout_second":
+		return program.TrackerWorkout
+	case "diet":
+		return program.TrackerNutrition
+	default:
+		return ""
+	}
 }
