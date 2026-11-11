@@ -31,7 +31,11 @@ on:
   pull_request:
     branches: [main]
   workflow_dispatch:
-
+    inputs:
+      quality_only:
+        description: Run tests and publish reports without deploying applications
+        type: boolean
+        default: false
 jobs:
   test:
     name: Test
@@ -50,7 +54,7 @@ jobs:
 
       - name: Go test
         working-directory: api
-        run: go test ./...
+        run: go test -coverprofile=coverage.out -covermode=atomic ./...
 
       - uses: actions/setup-node@v7
         with:
@@ -68,15 +72,47 @@ jobs:
 
       - name: Web tests
         working-directory: web
-        run: npm test
+        run: npm test -- --coverage --coverage.reporter=lcov
 
       - name: Build web
         working-directory: web
         run: npx vite build
 
+      - name: Fetch verified report client
+        if: github.ref == 'refs/heads/main'
+        run: |
+          curl -fsS https://coverage.biswas.me/ci/report-v1.py -o /tmp/project-quality-report.py
+          echo '620701586b18553b55b6eb0bc964a7a0dcef82f04f989b9f010b18947ebc746a  /tmp/project-quality-report.py' | sha256sum --check --status
+      - name: Publish application coverage
+        if: github.ref == 'refs/heads/main'
+        continue-on-error: true
+        env:
+          COVERAGE_TOKEN: ${{ secrets.COVERAGE_TOKEN }}
+          COVERAGE_REPO: 75hard
+          COVERAGE_GROUP: 75hard
+          COVERAGE_LANGUAGE: go
+          COVERAGE_SOURCE_ROOT: 'api'
+        run: |
+          export COVERAGE_GO_MODULE=$(sed -n "s/^module //p" api/go.mod)
+          python3 /tmp/project-quality-report.py coverage api/coverage.out
+      - name: Publish web coverage
+        if: github.ref == 'refs/heads/main'
+        continue-on-error: true
+        env:
+          COVERAGE_TOKEN: ${{ secrets.COVERAGE_WEB_TOKEN }}
+          COVERAGE_REPO: 75hard-web
+          COVERAGE_GROUP: 75hard
+          COVERAGE_LANGUAGE: node
+          COVERAGE_SOURCE_ROOT: 'web'
+        run: |
+          python3 /tmp/project-quality-report.py coverage web/coverage/lcov.info
+
+
+
   build:
     name: Build and push
-    if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
+    if: >-
+      (github.ref == 'refs/heads/main' && github.event_name != 'pull_request') && inputs.quality_only != true
     runs-on: [self-hosted, Linux, X64, prod]
     outputs:
       tag: ${{ steps.meta.outputs.tag }}
@@ -116,7 +152,9 @@ jobs:
           docker tag "$IMAGE:$TAG" "$IMAGE:x64-latest"
           docker push "$IMAGE:x64-latest"
 
+
   deploy:
+    if: inputs.quality_only != true
     name: Deploy to production
     needs: build
     runs-on: [self-hosted, Linux, X64, prod]
