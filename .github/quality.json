@@ -1,0 +1,26 @@
+{
+  "repo": "75hard",
+  "components": {
+    "application": {
+      "repo": "75hard",
+      "file": "coverage.out",
+      "language": "go",
+      "root": "api",
+      "token": "COVERAGE_TOKEN",
+      "label": "Backend",
+      "module": "github.com/anchoo2kewl/75hard/api"
+    },
+    "web": {
+      "repo": "75hard-web",
+      "file": "lcov.info",
+      "language": "node",
+      "root": "web",
+      "token": "COVERAGE_WEB_TOKEN",
+      "label": "web"
+    }
+  },
+  "workflows": [
+    ".github/workflows/security.yml",
+    ".github/workflows/ci-cd.yml"
+  ]
+}
